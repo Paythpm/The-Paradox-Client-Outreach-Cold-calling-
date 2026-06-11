@@ -8,6 +8,7 @@ let isDeviceReady = false;
 let callStartTime = null;
 let currentBusinessId = null;
 let currentCallLogId = null;
+let currentScriptId = null; // tracks which script was used for feedback loop
 
 export function getDeviceState() {
   return { isDeviceReady, currentCallLogId, currentBusinessId };
@@ -53,15 +54,20 @@ export async function makeCall(business, callerId, onStatusChange) {
 
   // Get current active script for logging
   let scriptSnapshot = null;
+  let scriptId = null;
   try {
     const { data: scriptData } = await supabase
       .from('ai_scripts')
-      .select('opening_line, talking_points, objection_handlers, suggested_close')
+      .select('id, opening_line, talking_points, objection_handlers, suggested_close')
       .eq('business_id', business.id)
       .eq('is_active', true)
+      .eq('variant', 'primary')
       .single();
-    scriptSnapshot = scriptData;
+    scriptSnapshot = scriptData ? { opening_line: scriptData.opening_line, talking_points: scriptData.talking_points, objection_handlers: scriptData.objection_handlers, suggested_close: scriptData.suggested_close } : null;
+    scriptId = scriptData?.id || null;
   } catch { /* script is optional */ }
+
+  currentScriptId = scriptId;
 
   // Insert call log
   const { data: callLog, error: logError } = await supabase
@@ -148,6 +154,7 @@ export function destroyDevice() {
   callStartTime = null;
   currentBusinessId = null;
   currentCallLogId = null;
+  currentScriptId = null;
 }
 
 export async function saveCallOutcome(callLogId, outcome, notes, callerId) {
@@ -179,14 +186,19 @@ export async function saveCallOutcome(callLogId, outcome, notes, callerId) {
 
   if (updatedLog?.business_id) {
     const newStatus = statusMap[outcome] || 'not_called';
-    // call_count is incremented by twilio-status-callback webhook — don't double-count here
     await supabase
       .from('businesses')
-      .update({
-        call_status: newStatus,
-        last_called_at: new Date().toISOString(),
-      })
+      .update({ call_status: newStatus, last_called_at: new Date().toISOString() })
       .eq('id', updatedLog.business_id);
+
+    // Feedback loop: mark script as used and optionally converted
+    if (currentScriptId) {
+      const positiveOutcomes = ['answered_interested', 'meeting_booked'];
+      await supabase.rpc('increment_script_usage', {
+        p_script_id: currentScriptId,
+        p_converted: positiveOutcomes.includes(outcome),
+      });
+    }
   }
 
   return updatedLog;

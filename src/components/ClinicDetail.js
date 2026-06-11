@@ -1,11 +1,22 @@
 ﻿import React, { useState } from 'react';
 import { BIZ_TYPE_LABELS } from '../analyzeData';
+import supabase from '../lib/supabase';
 
 const STAR_COLORS = { 5: '#2ecc7d', 4: '#84cc16', 3: '#f59e0b', 2: '#f97316', 1: '#ff5c6c' };
 
 export default function ClinicDetail({ biz, globalData, extraTab, extraTabs }) {
   const [activeTab, setActiveTab] = useState('overview');
   const [expandedCat, setExpandedCat] = useState(null);
+  const [contactName, setContactName] = useState(biz.contact_name || '');
+  const [editingContact, setEditingContact] = useState(false);
+  const [savedContact, setSavedContact] = useState(false);
+
+  const saveContactName = async (val) => {
+    if (!biz.id) return;
+    const { error } = await supabase.from('businesses').update({ contact_name: val || null }).eq('id', biz.id);
+    if (!error) { setSavedContact(true); setTimeout(() => setSavedContact(false), 2000); }
+    setEditingContact(false);
+  };
 
   // Support both single extraTab and multiple extraTabs
   const additionalTabs = extraTabs || (extraTab ? [extraTab] : []);
@@ -58,6 +69,32 @@ export default function ClinicDetail({ biz, globalData, extraTab, extraTabs }) {
                 View on Google Maps ↗
               </a>
             )}
+
+            {/* Contact name — inline editable */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+              {editingContact ? (
+                <input
+                  autoFocus
+                  value={contactName}
+                  onChange={e => setContactName(e.target.value)}
+                  onBlur={() => saveContactName(contactName)}
+                  onKeyDown={e => { if (e.key === 'Enter') saveContactName(contactName); if (e.key === 'Escape') { setContactName(biz.contact_name || ''); setEditingContact(false); } }}
+                  placeholder="Contact name (e.g. Sarah — used in call script)"
+                  style={{ padding: '4px 10px', background: 'var(--surface2)', border: '1px solid var(--accent)', borderRadius: 6, color: 'var(--text)', fontSize: 12, outline: 'none', width: 260 }}
+                />
+              ) : (
+                <button
+                  onClick={() => setEditingContact(true)}
+                  style={{ background: 'none', border: '1px dashed var(--border2)', borderRadius: 6, padding: '3px 10px', color: contactName ? 'var(--text2)' : 'var(--text3)', fontSize: 12, cursor: 'pointer' }}
+                >
+                  👤 {contactName || 'Add contact name (personalises script)'}
+                </button>
+              )}
+              {savedContact && <span style={{ fontSize: 11, color: 'var(--green)' }}>Saved ✓</span>}
+              {contactName && !editingContact && (
+                <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 4, background: 'var(--green-bg)', color: 'var(--green)' }}>Personalised script</span>
+              )}
+            </div>
           </div>
           <ScoreRing score={healthScore} color={scoreColor} label="Health Score" />
         </div>

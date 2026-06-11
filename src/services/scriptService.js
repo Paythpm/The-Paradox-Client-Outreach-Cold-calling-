@@ -2,16 +2,15 @@ import supabase from '../lib/supabase';
 
 /**
  * Fetch or generate an AI script for a business
+ * variant: 'primary' (default) | 'alternative'
  */
-export async function getScript(businessId, forceRegenerate = false) {
+export async function getScript(businessId, forceRegenerate = false, variant = 'primary') {
   const { data, error } = await supabase.functions.invoke('generate-script', {
-    body: { business_id: businessId, force_regenerate: forceRegenerate }
+    body: { business_id: businessId, force_regenerate: forceRegenerate, variant }
   });
-
   if (error) throw new Error(error.message || 'Failed to generate script');
   if (data?.error) throw new Error(data.error);
-
-  return data; // { cached: boolean, script: object }
+  return data; // { cached, script, tier }
 }
 
 /**

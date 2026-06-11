@@ -40,8 +40,22 @@ function StatCard({ label, value, sub, color }) {
 export default function AnalyticsPage() {
   const { caller } = useAuth();
   const [range, setRange] = useState('week');
+  const [scriptPerf, setScriptPerf] = useState([]);
   // eslint-disable-next-line no-unused-vars
   const [filterCaller, setFilterCaller] = useState(null);
+
+  // Load script performance data
+  React.useEffect(() => {
+    import('../lib/supabase').then(({ default: supabase }) => {
+      supabase.from('ai_scripts')
+        .select('id, opening_line, variant_angle, variant, times_used, times_converted, conversion_rate, avg_rating, businesses(business_name, category, rating, country_code)')
+        .eq('is_active', true)
+        .gte('times_used', 1)
+        .order('times_used', { ascending: false })
+        .limit(20)
+        .then(({ data }) => setScriptPerf(data || []));
+    });
+  }, []);
 
   // Memoize the date range — only recomputes when `range` changes, not on every render
   // This prevents useAnalytics from re-fetching on every keystroke/interaction
@@ -197,8 +211,7 @@ export default function AnalyticsPage() {
       </div>
 
       {/* Row 4: Top categories + best hours */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '20px 22px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '20px 22px' }}>
           <p style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Top Categories</p>
           <Suspense fallback={<div style={{ height: 200, background: 'var(--surface2)', borderRadius: 8 }} />}>
             <ResponsiveContainer width="100%" height={240}>
@@ -230,6 +243,46 @@ export default function AnalyticsPage() {
           <p style={{ fontSize: 11, color: 'var(--text3)', marginTop: 12 }}>Darker green = higher interest rate at that hour</p>
         </div>
       </div>
+
+      {/* Script Performance */}
+      {scriptPerf.length > 0 && (
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '20px 22px', marginTop: 24 }}>
+          <p style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Script Performance</p>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead>
+              <tr>
+                {['Business', 'Country', 'Angle', 'Variant', 'Used', 'Converted', 'Rate', 'Rating'].map(h => (
+                  <th key={h} style={{ padding: '7px 10px', textAlign: 'left', color: 'var(--text3)', fontWeight: 500, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {scriptPerf.map(s => {
+                const rate = parseFloat(s.conversion_rate) || 0;
+                const rateColor = rate > 30 ? 'var(--green)' : rate > 10 ? 'var(--amber)' : rate > 0 ? 'var(--red)' : 'var(--text3)';
+                return (
+                  <tr key={s.id} style={{ borderTop: '1px solid var(--border)' }}>
+                    <td style={{ padding: '8px 10px', color: 'var(--text)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {s.businesses?.business_name || '—'}
+                    </td>
+                    <td style={{ padding: '8px 10px', color: 'var(--text3)' }}>{s.businesses?.country_code || '—'}</td>
+                    <td style={{ padding: '8px 10px', color: 'var(--text2)', fontSize: 11 }}>{s.variant_angle || '—'}</td>
+                    <td style={{ padding: '8px 10px' }}>
+                      <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: s.variant === 'alternative' ? 'var(--amber-bg)' : 'var(--accent-glow)', color: s.variant === 'alternative' ? 'var(--amber)' : 'var(--accent2)' }}>
+                        {s.variant}
+                      </span>
+                    </td>
+                    <td style={{ padding: '8px 10px', color: 'var(--text2)' }}>{s.times_used}</td>
+                    <td style={{ padding: '8px 10px', color: 'var(--green)' }}>{s.times_converted}</td>
+                    <td style={{ padding: '8px 10px', color: rateColor, fontWeight: 600 }}>{rate > 0 ? rate + '%' : '—'}</td>
+                    <td style={{ padding: '8px 10px', color: 'var(--amber)' }}>{s.avg_rating ? '★' + parseFloat(s.avg_rating).toFixed(1) : '—'}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
