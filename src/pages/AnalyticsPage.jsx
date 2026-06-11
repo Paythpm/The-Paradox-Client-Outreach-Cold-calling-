@@ -1,0 +1,235 @@
+import React, { useState, lazy, Suspense, useMemo } from 'react';
+import { useAnalytics } from '../hooks/useAnalytics';
+import { useAuth } from '../contexts/AuthContext';
+import Papa from 'papaparse';
+
+const LineChart = lazy(() => import('recharts').then(m => ({ default: m.LineChart })));
+const Line = lazy(() => import('recharts').then(m => ({ default: m.Line })));
+const XAxis = lazy(() => import('recharts').then(m => ({ default: m.XAxis })));
+const YAxis = lazy(() => import('recharts').then(m => ({ default: m.YAxis })));
+const Tooltip = lazy(() => import('recharts').then(m => ({ default: m.Tooltip })));
+const Legend = lazy(() => import('recharts').then(m => ({ default: m.Legend })));
+const ResponsiveContainer = lazy(() => import('recharts').then(m => ({ default: m.ResponsiveContainer })));
+const PieChart = lazy(() => import('recharts').then(m => ({ default: m.PieChart })));
+const Pie = lazy(() => import('recharts').then(m => ({ default: m.Pie })));
+const Cell = lazy(() => import('recharts').then(m => ({ default: m.Cell })));
+const BarChart = lazy(() => import('recharts').then(m => ({ default: m.BarChart })));
+const Bar = lazy(() => import('recharts').then(m => ({ default: m.Bar })));
+
+const OUTCOME_COLORS = {
+  no_answer: '#5a5a75',
+  answered_not_interested: '#ff5c6c',
+  answered_callback: '#f59e0b',
+  answered_interested: '#2ecc7d',
+  meeting_booked: '#3b9eff',
+  voicemail_left: '#9999b0',
+  wrong_number: '#3a3a50',
+  busy: '#6c63ff',
+};
+
+function StatCard({ label, value, sub, color }) {
+  return (
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '16px 20px' }}>
+      <p style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</p>
+      <p style={{ fontSize: 26, fontWeight: 700, color: color || 'var(--text)', letterSpacing: '-0.03em' }}>{value}</p>
+      {sub && <p style={{ fontSize: 11, color: 'var(--text3)', marginTop: 3 }}>{sub}</p>}
+    </div>
+  );
+}
+
+export default function AnalyticsPage() {
+  const { caller } = useAuth();
+  const [range, setRange] = useState('week');
+  // eslint-disable-next-line no-unused-vars
+  const [filterCaller, setFilterCaller] = useState(null);
+
+  // Memoize the date range — only recomputes when `range` changes, not on every render
+  // This prevents useAnalytics from re-fetching on every keystroke/interaction
+  const { start, end } = useMemo(() => {
+    const e = new Date();
+    const s = new Date();
+    if (range === 'today') s.setHours(0, 0, 0, 0);
+    else if (range === 'week') s.setDate(s.getDate() - 7);
+    else if (range === 'month') s.setDate(s.getDate() - 30);
+    return { start: s, end: e };
+  }, [range]);
+
+  const { data, isLoading, error } = useAnalytics({ start, end, callerId: filterCaller || undefined });
+
+  const handleExportCSV = () => {
+    if (!data?.allLogs) return;
+    const rows = data.allLogs.map(l => ({
+      business_name: l.businesses?.business_name || '',
+      category: l.businesses?.category || '',
+      country: l.businesses?.country_code || '',
+      city: l.businesses?.city || '',
+      caller: l.callers?.full_name || '',
+      outcome: l.outcome || '',
+      duration_seconds: l.duration_seconds || 0,
+      notes: l.notes || '',
+      meeting_booked: data.allMeetings.some(m => m.call_log_id === l.id) ? 'Yes' : 'No',
+      started_at: l.started_at || '',
+    }));
+    const csv = Papa.unparse(rows);
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `dentiq-calls-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  if (isLoading) return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
+      <div className="spinner" />
+      <style>{`.spinner{width:36px;height:36px;border:2px solid var(--border);border-top:2px solid var(--accent);border-radius:50%;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
+
+  if (error) return (
+    <div style={{ padding: 40, color: 'var(--red)' }}>Error loading analytics: {error}</div>
+  );
+
+  const { overview, dailyTrend, perCaller, outcomeBreakdown, topCategories, hourlyPattern } = data || {};
+
+  return (
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', padding: '28px 32px' }}>
+
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.02em' }}>Analytics</h1>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {['today', 'week', 'month'].map(r => (
+            <button key={r} onClick={() => setRange(r)} style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: range === r ? 'var(--accent)' : 'var(--surface)', color: range === r ? 'white' : 'var(--text3)', cursor: 'pointer', fontSize: 13, textTransform: 'capitalize' }}>{r === 'today' ? 'Today' : r === 'week' ? 'This Week' : 'This Month'}</button>
+          ))}
+          <button onClick={handleExportCSV} disabled={!data?.allLogs?.length} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text2)', cursor: 'pointer', fontSize: 13 }}>⬇ Export CSV</button>
+        </div>
+      </div>
+
+      {/* Row 1: Stat cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12, marginBottom: 24 }}>
+        <StatCard label="Total Calls" value={overview?.total_calls || 0} />
+        <StatCard label="Connected" value={overview?.total_connected || 0} />
+        <StatCard label="Interested" value={overview?.total_interested || 0} color="var(--green)" />
+        <StatCard label="Meetings" value={overview?.total_meetings || 0} color="var(--blue)" />
+        <StatCard label="Answer Rate" value={(overview?.answer_rate || 0) + '%'} sub="calls answered" />
+        <StatCard label="Conversion" value={(overview?.interest_rate || 0) + '%'} sub="interested / answered" color="var(--accent2)" />
+      </div>
+
+      {/* Row 2: Charts */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 20, marginBottom: 24 }}>
+        {/* Daily trend */}
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '20px 22px' }}>
+          <p style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Daily Activity</p>
+          <Suspense fallback={<div style={{ height: 200, background: 'var(--surface2)', borderRadius: 8 }} />}>
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={dailyTrend || []}>
+                <XAxis dataKey="date" tick={{ fill: 'var(--text3)', fontSize: 11 }} />
+                <YAxis tick={{ fill: 'var(--text3)', fontSize: 11 }} />
+                <Tooltip contentStyle={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8 }} />
+                <Legend />
+                <Line type="monotone" dataKey="total_calls" stroke="#6c63ff" strokeWidth={2} dot={false} name="Calls" />
+                <Line type="monotone" dataKey="interested" stroke="#2ecc7d" strokeWidth={2} dot={false} name="Interested" />
+                <Line type="monotone" dataKey="meetings" stroke="#3b9eff" strokeWidth={2} dot={false} name="Meetings" />
+              </LineChart>
+            </ResponsiveContainer>
+          </Suspense>
+        </div>
+
+        {/* Outcome breakdown */}
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '20px 22px' }}>
+          <p style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Outcome Breakdown</p>
+          <Suspense fallback={<div style={{ height: 200, background: 'var(--surface2)', borderRadius: 8 }} />}>
+            <ResponsiveContainer width="100%" height={200}>
+              <PieChart>
+                <Pie data={outcomeBreakdown || []} dataKey="count" nameKey="outcome" cx="50%" cy="50%" outerRadius={80} innerRadius={50}>
+                  {(outcomeBreakdown || []).map((entry, i) => (
+                    <Cell key={i} fill={OUTCOME_COLORS[entry.outcome] || '#6c63ff'} />
+                  ))}
+                </Pie>
+                <Tooltip contentStyle={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8 }} />
+              </PieChart>
+            </ResponsiveContainer>
+          </Suspense>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+            {(outcomeBreakdown || []).slice(0, 6).map(o => (
+              <span key={o.outcome} style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: OUTCOME_COLORS[o.outcome] + '22', color: OUTCOME_COLORS[o.outcome] }}>
+                {o.outcome?.replace(/_/g, ' ')} {o.percentage}%
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Row 3: Per-caller leaderboard */}
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '20px 22px', marginBottom: 24 }}>
+        <p style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Team Leaderboard</p>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr>
+              {['Caller', 'Calls', 'Connected', 'Interested', 'Meetings', 'Rate', 'Avg Duration'].map(h => (
+                <th key={h} style={{ padding: '8px 12px', textAlign: 'left', color: 'var(--text3)', fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {(perCaller || []).map(c => (
+              <tr key={c.id} style={{ borderTop: '1px solid var(--border)', background: c.id === caller?.id ? 'var(--accent-glow)' : 'transparent' }}>
+                <td style={{ padding: '10px 12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: 'white', flexShrink: 0 }}>
+                      {c.name?.charAt(0)?.toUpperCase()}
+                    </div>
+                    <span style={{ color: c.id === caller?.id ? 'var(--accent2)' : 'var(--text)', fontWeight: c.id === caller?.id ? 600 : 400 }}>{c.name}</span>
+                  </div>
+                </td>
+                <td style={{ padding: '10px 12px', color: 'var(--text2)' }}>{c.total}</td>
+                <td style={{ padding: '10px 12px', color: 'var(--text2)' }}>{c.connected}</td>
+                <td style={{ padding: '10px 12px', color: 'var(--green)', fontWeight: 600 }}>{c.interested}</td>
+                <td style={{ padding: '10px 12px', color: 'var(--blue)' }}>{c.meetings}</td>
+                <td style={{ padding: '10px 12px', color: 'var(--accent2)' }}>{c.conversion_rate}%</td>
+                <td style={{ padding: '10px 12px', color: 'var(--text3)', fontFamily: 'monospace' }}>{c.avg_duration}s</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Row 4: Top categories + best hours */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '20px 22px' }}>
+          <p style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Top Categories</p>
+          <Suspense fallback={<div style={{ height: 200, background: 'var(--surface2)', borderRadius: 8 }} />}>
+            <ResponsiveContainer width="100%" height={240}>
+              <BarChart data={(topCategories || []).slice(0, 8)} layout="vertical">
+                <XAxis type="number" tick={{ fill: 'var(--text3)', fontSize: 10 }} />
+                <YAxis type="category" dataKey="category" tick={{ fill: 'var(--text2)', fontSize: 11 }} width={120} />
+                <Tooltip contentStyle={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8 }} />
+                <Bar dataKey="calls" fill="var(--surface3)" name="Calls" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="interested" fill="#2ecc7d" name="Interested" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </Suspense>
+        </div>
+
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '20px 22px' }}>
+          <p style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Best Hours to Call</p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 3 }}>
+            {(hourlyPattern || []).filter(h => h.hour >= 8 && h.hour <= 19).map(h => {
+              const intensity = h.calls > 0 ? Math.min(h.interest_rate / 50, 1) : 0;
+              const bg = h.calls === 0 ? 'var(--surface2)' : `rgba(46,204,125,${0.1 + intensity * 0.8})`;
+              return (
+                <div key={h.hour} title={`${h.hour}:00 — ${h.calls} calls, ${h.interest_rate}% interest`}
+                  style={{ height: 40, background: bg, borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: h.calls > 0 ? 'rgba(255,255,255,0.8)' : 'var(--text3)' }}>
+                  {h.hour}h
+                </div>
+              );
+            })}
+          </div>
+          <p style={{ fontSize: 11, color: 'var(--text3)', marginTop: 12 }}>Darker green = higher interest rate at that hour</p>
+        </div>
+      </div>
+    </div>
+  );
+}
