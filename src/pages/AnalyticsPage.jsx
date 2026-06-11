@@ -94,7 +94,7 @@ export default function AnalyticsPage() {
     URL.revokeObjectURL(url);
   };
 
-  if (isLoading) return (
+  if (isLoading && !data) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
       <div className="spinner" />
       <style>{`.spinner{width:36px;height:36px;border:2px solid var(--border);border-top:2px solid var(--accent);border-radius:50%;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}`}</style>
@@ -112,7 +112,10 @@ export default function AnalyticsPage() {
 
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.02em' }}>Analytics</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.02em' }}>Analytics</h1>
+          {isLoading && <span style={{ fontSize: 11, color: 'var(--text3)', padding: '3px 8px', background: 'var(--surface2)', borderRadius: 6 }}>Updating...</span>}
+        </div>
         <div style={{ display: 'flex', gap: 8 }}>
           {['today', 'week', 'month'].map(r => (
             <button key={r} onClick={() => setRange(r)} style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: range === r ? 'var(--accent)' : 'var(--surface)', color: range === r ? 'white' : 'var(--text3)', cursor: 'pointer', fontSize: 13, textTransform: 'capitalize' }}>{r === 'today' ? 'Today' : r === 'week' ? 'This Week' : 'This Month'}</button>
