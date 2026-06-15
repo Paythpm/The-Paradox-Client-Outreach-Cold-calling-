@@ -16,15 +16,17 @@ const Cell = lazy(() => import('recharts').then(m => ({ default: m.Cell })));
 const BarChart = lazy(() => import('recharts').then(m => ({ default: m.BarChart })));
 const Bar = lazy(() => import('recharts').then(m => ({ default: m.Bar })));
 
+const ADMIN_EMAILS = ['ramakantsharma2103@gmail.com'];
+
 const OUTCOME_COLORS = {
-  no_answer: '#5a5a75',
+  no_answer:               '#5a5a75',
   answered_not_interested: '#ff5c6c',
-  answered_callback: '#f59e0b',
-  answered_interested: '#2ecc7d',
-  meeting_booked: '#3b9eff',
-  voicemail_left: '#9999b0',
-  wrong_number: '#3a3a50',
-  busy: '#6c63ff',
+  answered_callback:       '#f59e0b',
+  answered_interested:     '#2ecc7d',
+  meeting_booked:          '#3b9eff',
+  voicemail_left:          '#9999b0',
+  wrong_number:            '#3a3a50',
+  busy:                    '#6c63ff',
 };
 
 function StatCard({ label, value, sub, color }) {
@@ -38,35 +40,42 @@ function StatCard({ label, value, sub, color }) {
 }
 
 export default function AnalyticsPage() {
-  const { caller } = useAuth();
+  const { user, caller } = useAuth();
   const [range, setRange] = useState('week');
   const [scriptPerf, setScriptPerf] = useState([]);
-  const [filterCaller, setFilterCaller] = useState(null); // null = all team
-  const [allCallers, setAllCallers] = useState([]);        // list for dropdown
+  const [filterCaller, setFilterCaller] = useState(null); // admin-only: null = all team
+  const [allCallers, setAllCallers] = useState([]);
 
-  // Load callers for the filter dropdown
+  // Determine role — admin sees everything, employees see only their own data
+  const isAdmin = ADMIN_EMAILS.includes(user?.email);
+
+  // For employees: always filter to their own caller_id
+  // For admin: use filterCaller (null = all team)
+  const effectiveCallerId = isAdmin ? (filterCaller || undefined) : (caller?.id || undefined);
+
+  // Admin: load all callers for the filter dropdown
   React.useEffect(() => {
+    if (!isAdmin) return;
     import('../lib/supabase').then(({ default: supabase }) => {
       supabase.from('callers').select('id,full_name').eq('is_active', true).order('full_name')
         .then(({ data }) => setAllCallers(data || []));
     });
-  }, []);
+  }, [isAdmin]);
 
-  // Load script performance data
+  // Script performance — admin sees all, employee sees scripts they used
   React.useEffect(() => {
     import('../lib/supabase').then(({ default: supabase }) => {
-      supabase.from('ai_scripts')
+      let q = supabase.from('ai_scripts')
         .select('id, opening_line, variant_angle, variant, times_used, times_converted, conversion_rate, avg_rating, businesses(business_name, category, rating, country_code)')
         .eq('is_active', true)
         .gte('times_used', 1)
         .order('times_used', { ascending: false })
-        .limit(20)
-        .then(({ data }) => setScriptPerf(data || []));
+        .limit(20);
+      q.then(({ data }) => setScriptPerf(data || []));
     });
   }, []);
 
-  // Compute ISO strings from range — stable strings prevent infinite re-fetch loop
-  // useMemo with ISO strings avoids Date object reference instability
+  // Stable ISO strings — prevents infinite re-fetch loop
   const { startISO, endISO } = useMemo(() => {
     const e = new Date();
     const s = new Date();
@@ -76,21 +85,21 @@ export default function AnalyticsPage() {
     return { startISO: s.toISOString(), endISO: e.toISOString() };
   }, [range]);
 
-  const { data, isLoading, error } = useAnalytics({ startISO, endISO, callerId: filterCaller || undefined });
+  const { data, isLoading, error } = useAnalytics({ startISO, endISO, callerId: effectiveCallerId });
 
   const handleExportCSV = () => {
     if (!data?.allLogs) return;
     const rows = data.allLogs.map(l => ({
-      business_name: l.businesses?.business_name || '',
-      category: l.businesses?.category || '',
-      country: l.businesses?.country_code || '',
-      city: l.businesses?.city || '',
-      caller: l.callers?.full_name || '',
-      outcome: l.outcome || '',
+      business_name:    l.businesses?.business_name || '',
+      category:         l.businesses?.category || '',
+      country:          l.businesses?.country_code || '',
+      city:             l.businesses?.city || '',
+      caller:           l.callers?.full_name || '',
+      outcome:          l.outcome || '',
       duration_seconds: l.duration_seconds || 0,
-      notes: l.notes || '',
-      meeting_booked: data.allMeetings.some(m => m.call_log_id === l.id) ? 'Yes' : 'No',
-      started_at: l.started_at || '',
+      notes:            l.notes || '',
+      meeting_booked:   data.allMeetings.some(m => m.call_log_id === l.id) ? 'Yes' : 'No',
+      started_at:       l.started_at || '',
     }));
     const csv = Papa.unparse(rows);
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -115,60 +124,93 @@ export default function AnalyticsPage() {
 
   const { overview, dailyTrend, perCaller, outcomeBreakdown, topCategories, hourlyPattern } = data || {};
 
+  // For employee view — extract just their own row from perCaller
+  const myStats = !isAdmin ? (perCaller || []).find(c => c.id === caller?.id) : null;
+
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', padding: '28px 32px' }}>
 
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.02em' }}>Analytics</h1>
+          <div>
+            <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.02em', margin: 0 }}>
+              {isAdmin ? 'Team Analytics' : 'My Performance'}
+            </h1>
+            {!isAdmin && (
+              <p style={{ fontSize: 12, color: 'var(--text3)', margin: '2px 0 0' }}>
+                {caller?.full_name || user?.email}
+              </p>
+            )}
+          </div>
           {isLoading && <span style={{ fontSize: 11, color: 'var(--text3)', padding: '3px 8px', background: 'var(--surface2)', borderRadius: 6 }}>Updating...</span>}
         </div>
+
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          {/* Caller filter — shows individual employee or full team */}
-          <select
-            value={filterCaller || ''}
-            onChange={e => setFilterCaller(e.target.value || null)}
-            style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: filterCaller ? 'var(--accent2)' : 'var(--text3)', cursor: 'pointer', fontSize: 13 }}
-          >
-            <option value="">👥 All Team</option>
-            {allCallers.map(c => (
-              <option key={c.id} value={c.id}>
-                {c.full_name}{c.id === caller?.id ? ' (you)' : ''}
-              </option>
-            ))}
-          </select>
+          {/* Admin-only: caller filter dropdown */}
+          {isAdmin && (
+            <select
+              value={filterCaller || ''}
+              onChange={e => setFilterCaller(e.target.value || null)}
+              style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: filterCaller ? 'var(--accent2)' : 'var(--text3)', cursor: 'pointer', fontSize: 13 }}
+            >
+              <option value="">👥 All Team</option>
+              {allCallers.map(c => (
+                <option key={c.id} value={c.id}>{c.full_name}</option>
+              ))}
+            </select>
+          )}
 
           {['today', 'week', 'month'].map(r => (
-            <button key={r} onClick={() => setRange(r)} style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: range === r ? 'var(--accent)' : 'var(--surface)', color: range === r ? 'white' : 'var(--text3)', cursor: 'pointer', fontSize: 13, textTransform: 'capitalize' }}>{r === 'today' ? 'Today' : r === 'week' ? 'This Week' : 'This Month'}</button>
+            <button key={r} onClick={() => setRange(r)}
+              style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: range === r ? 'var(--accent)' : 'var(--surface)', color: range === r ? 'white' : 'var(--text3)', cursor: 'pointer', fontSize: 13 }}>
+              {r === 'today' ? 'Today' : r === 'week' ? 'This Week' : 'This Month'}
+            </button>
           ))}
-          <button onClick={handleExportCSV} disabled={!data?.allLogs?.length} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text2)', cursor: 'pointer', fontSize: 13 }}>⬇ Export CSV</button>
+
+          {/* Export CSV — admin always, employee only for their own data */}
+          <button onClick={handleExportCSV} disabled={!data?.allLogs?.length}
+            style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text2)', cursor: 'pointer', fontSize: 13 }}>
+            ⬇ Export CSV
+          </button>
         </div>
       </div>
 
-      {/* Active filter banner */}
-      {filterCaller && (
+      {/* Admin: active filter banner */}
+      {isAdmin && filterCaller && (
         <div style={{ background: 'var(--accent-glow)', border: '1px solid var(--accent)', borderRadius: 8, padding: '8px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span style={{ fontSize: 13, color: 'var(--accent2)' }}>
-            📊 Showing stats for: <strong>{allCallers.find(c => c.id === filterCaller)?.full_name}</strong>
+            📊 Viewing: <strong>{allCallers.find(c => c.id === filterCaller)?.full_name}</strong>
           </span>
           <button onClick={() => setFilterCaller(null)} style={{ fontSize: 12, color: 'var(--accent2)', background: 'none', border: 'none', cursor: 'pointer' }}>✕ Show all team</button>
         </div>
       )}
 
-      {/* Row 1: Stat cards */}
+      {/* Employee: personal banner */}
+      {!isAdmin && (
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 16px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: 'white' }}>
+            {caller?.full_name?.charAt(0)?.toUpperCase() || '?'}
+          </div>
+          <div>
+            <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', margin: 0 }}>{caller?.full_name}</p>
+            <p style={{ fontSize: 11, color: 'var(--text3)', margin: 0 }}>Your personal performance dashboard</p>
+          </div>
+        </div>
+      )}
+
+      {/* Row 1: Stat cards — same for both roles */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12, marginBottom: 24 }}>
-        <StatCard label="Total Calls" value={overview?.total_calls || 0} />
-        <StatCard label="Connected" value={overview?.total_connected || 0} />
-        <StatCard label="Interested" value={overview?.total_interested || 0} color="var(--green)" />
-        <StatCard label="Meetings" value={overview?.total_meetings || 0} color="var(--blue)" />
-        <StatCard label="Answer Rate" value={(overview?.answer_rate || 0) + '%'} sub="calls answered" />
-        <StatCard label="Conversion" value={(overview?.interest_rate || 0) + '%'} sub="interested / answered" color="var(--accent2)" />
+        <StatCard label="Total Calls"  value={overview?.total_calls    || 0} />
+        <StatCard label="Connected"    value={overview?.total_connected || 0} />
+        <StatCard label="Interested"   value={overview?.total_interested || 0} color="var(--green)" />
+        <StatCard label="Meetings"     value={overview?.total_meetings   || 0} color="var(--blue)" />
+        <StatCard label="Answer Rate"  value={(overview?.answer_rate  || 0) + '%'} sub="calls answered" />
+        <StatCard label="Conversion"   value={(overview?.interest_rate || 0) + '%'} sub="interested / answered" color="var(--accent2)" />
       </div>
 
-      {/* Row 2: Charts */}
+      {/* Row 2: Charts — same for both roles */}
       <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 20, marginBottom: 24 }}>
-        {/* Daily trend */}
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '20px 22px' }}>
           <p style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Daily Activity</p>
           <Suspense fallback={<div style={{ height: 200, background: 'var(--surface2)', borderRadius: 8 }} />}>
@@ -179,14 +221,13 @@ export default function AnalyticsPage() {
                 <Tooltip contentStyle={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8 }} />
                 <Legend />
                 <Line type="monotone" dataKey="total_calls" stroke="#6c63ff" strokeWidth={2} dot={false} name="Calls" />
-                <Line type="monotone" dataKey="interested" stroke="#2ecc7d" strokeWidth={2} dot={false} name="Interested" />
-                <Line type="monotone" dataKey="meetings" stroke="#3b9eff" strokeWidth={2} dot={false} name="Meetings" />
+                <Line type="monotone" dataKey="interested"  stroke="#2ecc7d" strokeWidth={2} dot={false} name="Interested" />
+                <Line type="monotone" dataKey="meetings"    stroke="#3b9eff" strokeWidth={2} dot={false} name="Meetings" />
               </LineChart>
             </ResponsiveContainer>
           </Suspense>
         </div>
 
-        {/* Outcome breakdown */}
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '20px 22px' }}>
           <p style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Outcome Breakdown</p>
           <Suspense fallback={<div style={{ height: 200, background: 'var(--surface2)', borderRadius: 8 }} />}>
@@ -203,7 +244,7 @@ export default function AnalyticsPage() {
           </Suspense>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
             {(outcomeBreakdown || []).slice(0, 6).map(o => (
-              <span key={o.outcome} style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: OUTCOME_COLORS[o.outcome] + '22', color: OUTCOME_COLORS[o.outcome] }}>
+              <span key={o.outcome} style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: (OUTCOME_COLORS[o.outcome] || '#6c63ff') + '22', color: OUTCOME_COLORS[o.outcome] || '#6c63ff' }}>
                 {o.outcome?.replace(/_/g, ' ')} {o.percentage}%
               </span>
             ))}
@@ -211,74 +252,100 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
-      {/* Row 3: Per-caller leaderboard */}
-      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '20px 22px', marginBottom: 24 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <p style={{ fontSize: 12, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            {filterCaller ? '👤 Individual Performance' : '🏆 Team Leaderboard'}
-          </p>
-          {filterCaller && (
-            <span style={{ fontSize: 11, color: 'var(--accent2)', background: 'var(--accent-glow)', padding: '2px 8px', borderRadius: 4 }}>
-              {allCallers.find(c => c.id === filterCaller)?.full_name}
-            </span>
-          )}
-        </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead>
-            <tr>
-              {['Caller', 'Calls', 'Connected', 'Interested', 'Meetings', 'Rate', 'Avg Duration'].map(h => (
-                <th key={h} style={{ padding: '8px 12px', textAlign: 'left', color: 'var(--text3)', fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {(perCaller || []).length === 0 && (
+      {/* ── ADMIN VIEW: full team leaderboard ── */}
+      {isAdmin && (
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '20px 22px', marginBottom: 24 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <p style={{ fontSize: 12, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              {filterCaller ? '👤 Individual Performance' : '🏆 Team Leaderboard'}
+            </p>
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
               <tr>
-                <td colSpan={7} style={{ padding: '24px 12px', color: 'var(--text3)', fontSize: 13, textAlign: 'center' }}>
-                  No call data yet for this period. Start making calls to see stats here.
-                </td>
+                {['', 'Caller', 'Calls', 'Connected', 'Interested', 'Meetings', 'Rate', 'Avg Duration'].map(h => (
+                  <th key={h} style={{ padding: '8px 12px', textAlign: 'left', color: 'var(--text3)', fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
+                ))}
               </tr>
-            )}
-            {(perCaller || []).map((c, idx) => (
-              <tr key={c.id} style={{ borderTop: '1px solid var(--border)', background: c.id === caller?.id ? 'var(--accent-glow)' : 'transparent' }}>
-                <td style={{ padding: '10px 12px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    {/* Rank badge */}
-                    {!filterCaller && (
-                      <span style={{ fontSize: 10, color: idx === 0 ? '#f59e0b' : 'var(--text3)', fontWeight: 700, minWidth: 16 }}>
-                        {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`}
-                      </span>
-                    )}
-                    <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: 'white', flexShrink: 0 }}>
-                      {c.name?.charAt(0)?.toUpperCase()}
-                    </div>
-                    <span style={{ color: c.id === caller?.id ? 'var(--accent2)' : 'var(--text)', fontWeight: c.id === caller?.id ? 600 : 400 }}>
-                      {c.name} {c.id === caller?.id ? '(you)' : ''}
+            </thead>
+            <tbody>
+              {(perCaller || []).length === 0 && (
+                <tr>
+                  <td colSpan={8} style={{ padding: '24px 12px', color: 'var(--text3)', fontSize: 13, textAlign: 'center' }}>
+                    No call data yet. Stats appear here once team members start calling.
+                  </td>
+                </tr>
+              )}
+              {(perCaller || []).map((c, idx) => (
+                <tr key={c.id} style={{ borderTop: '1px solid var(--border)', background: c.id === caller?.id ? 'var(--accent-glow)' : 'transparent' }}>
+                  <td style={{ padding: '10px 12px', width: 28 }}>
+                    <span style={{ fontSize: 14 }}>
+                      {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`}
                     </span>
-                  </div>
-                </td>
-                <td style={{ padding: '10px 12px', color: 'var(--text2)' }}>{c.total}</td>
-                <td style={{ padding: '10px 12px', color: 'var(--text2)' }}>{c.connected}</td>
-                <td style={{ padding: '10px 12px', color: 'var(--green)', fontWeight: 600 }}>{c.interested}</td>
-                <td style={{ padding: '10px 12px', color: 'var(--blue)' }}>{c.meetings}</td>
-                <td style={{ padding: '10px 12px' }}>
-                  <span style={{
-                    color: c.conversion_rate > 30 ? 'var(--green)' : c.conversion_rate > 10 ? 'var(--amber)' : 'var(--text3)',
-                    fontWeight: c.conversion_rate > 20 ? 700 : 400
-                  }}>
-                    {c.conversion_rate}%
-                  </span>
-                </td>
-                <td style={{ padding: '10px 12px', color: 'var(--text3)', fontFamily: 'monospace' }}>{c.avg_duration}s</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                  </td>
+                  <td style={{ padding: '10px 12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: 'white', flexShrink: 0 }}>
+                        {c.name?.charAt(0)?.toUpperCase()}
+                      </div>
+                      <span style={{ color: c.id === caller?.id ? 'var(--accent2)' : 'var(--text)', fontWeight: c.id === caller?.id ? 600 : 400 }}>
+                        {c.name} {c.id === caller?.id ? '(you)' : ''}
+                      </span>
+                    </div>
+                  </td>
+                  <td style={{ padding: '10px 12px', color: 'var(--text2)' }}>{c.total}</td>
+                  <td style={{ padding: '10px 12px', color: 'var(--text2)' }}>{c.connected}</td>
+                  <td style={{ padding: '10px 12px', color: 'var(--green)', fontWeight: 600 }}>{c.interested}</td>
+                  <td style={{ padding: '10px 12px', color: 'var(--blue)' }}>{c.meetings}</td>
+                  <td style={{ padding: '10px 12px' }}>
+                    <span style={{ color: c.conversion_rate > 30 ? 'var(--green)' : c.conversion_rate > 10 ? 'var(--amber)' : 'var(--text3)', fontWeight: c.conversion_rate > 20 ? 700 : 400 }}>
+                      {c.conversion_rate}%
+                    </span>
+                  </td>
+                  <td style={{ padding: '10px 12px', color: 'var(--text3)', fontFamily: 'monospace' }}>{c.avg_duration}s</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
-      {/* Row 4: Top categories + best hours */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '20px 22px' }}>
-          <p style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Top Categories</p>
+      {/* ── EMPLOYEE VIEW: personal stats card ── */}
+      {!isAdmin && myStats && (
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '20px 22px', marginBottom: 24 }}>
+          <p style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.06em' }}>📊 Your Stats This Period</p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
+            {[
+              { label: 'Calls Made',     value: myStats.total,          color: 'var(--text)' },
+              { label: 'Connected',      value: myStats.connected,      color: 'var(--text2)' },
+              { label: 'Interested',     value: myStats.interested,     color: 'var(--green)' },
+              { label: 'Meetings',       value: myStats.meetings,       color: 'var(--blue)' },
+              { label: 'Conversion %',   value: myStats.conversion_rate + '%', color: myStats.conversion_rate > 20 ? 'var(--green)' : 'var(--text)' },
+              { label: 'Avg Call Time',  value: myStats.avg_duration + 's', color: 'var(--text3)' },
+            ].map(s => (
+              <div key={s.label} style={{ background: 'var(--surface2)', borderRadius: 8, padding: '14px 16px' }}>
+                <p style={{ fontSize: 11, color: 'var(--text3)', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{s.label}</p>
+                <p style={{ fontSize: 24, fontWeight: 700, color: s.color, margin: 0, letterSpacing: '-0.02em' }}>{s.value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!isAdmin && !myStats && !isLoading && (
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '32px', marginBottom: 24, textAlign: 'center' }}>
+          <p style={{ fontSize: 24, margin: '0 0 8px' }}>📞</p>
+          <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', margin: '0 0 6px' }}>No calls yet this period</p>
+          <p style={{ fontSize: 13, color: 'var(--text3)', margin: 0 }}>Your stats will appear here once you start making calls.</p>
+        </div>
+      )}
+
+      {/* Row 4: Top categories + best hours — same for both */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '20px 22px' }}>
+          <p style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            {isAdmin ? 'Top Categories' : 'Your Top Categories'}
+          </p>
           <Suspense fallback={<div style={{ height: 200, background: 'var(--surface2)', borderRadius: 8 }} />}>
             <ResponsiveContainer width="100%" height={240}>
               <BarChart data={(topCategories || []).slice(0, 8)} layout="vertical">
@@ -310,7 +377,7 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
-      {/* Script Performance */}
+      {/* Script Performance — admin sees all, employee sees their scripts */}
       {scriptPerf.length > 0 && (
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '20px 22px', marginTop: 24 }}>
           <p style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Script Performance</p>
@@ -328,9 +395,7 @@ export default function AnalyticsPage() {
                 const rateColor = rate > 30 ? 'var(--green)' : rate > 10 ? 'var(--amber)' : rate > 0 ? 'var(--red)' : 'var(--text3)';
                 return (
                   <tr key={s.id} style={{ borderTop: '1px solid var(--border)' }}>
-                    <td style={{ padding: '8px 10px', color: 'var(--text)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {s.businesses?.business_name || '—'}
-                    </td>
+                    <td style={{ padding: '8px 10px', color: 'var(--text)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.businesses?.business_name || '—'}</td>
                     <td style={{ padding: '8px 10px', color: 'var(--text3)' }}>{s.businesses?.country_code || '—'}</td>
                     <td style={{ padding: '8px 10px', color: 'var(--text2)', fontSize: 11 }}>{s.variant_angle || '—'}</td>
                     <td style={{ padding: '8px 10px' }}>
