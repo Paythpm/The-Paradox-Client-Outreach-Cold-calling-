@@ -20,6 +20,7 @@ const path    = require('path');
 const fs      = require('fs');
 const readline = require('readline');
 const crypto  = require('crypto');
+const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config({ path: path.join(__dirname, '../.env.local') });
 
 const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL;
@@ -160,35 +161,46 @@ async function main() {
   console.log('╚══════════════════════════════════════════════════════════════╝\n');
 
   // ── Step 1: Build PlaceID → business_id map ──────────────────────────────────
+  // IMPORTANT: use supabase-js .range() NOT fetch+offset — the REST API offset
+  // can return partial pages due to data gaps, causing early termination.
   console.log('Loading PlaceID → business_id map...');
+  const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
   const placeIdMap = new Map();
-  let from = 0;
+  // CRITICAL: use cursor-based pagination (id > last_id) NOT offset-based.
+  // Supabase range() with filtered queries returns variable page sizes due to
+  // index gaps — pages mid-table can return 0 rows and stop the loop early,
+  // silently missing up to 36,000 rows.
+  let lastId = '00000000-0000-0000-0000-000000000000';
   while (true) {
-    const data = await fetchJSON(
-      `${SUPABASE_URL}/rest/v1/businesses?select=id,place_id&place_id=not.is.null&limit=1000&offset=${from}`,
-      { headers: { apikey: SERVICE_KEY, Authorization: 'Bearer ' + SERVICE_KEY } }
-    );
-    if (!Array.isArray(data) || data.length === 0) break;
+    const { data, error } = await supabase
+      .from('businesses')
+      .select('id,place_id')
+      .not('place_id', 'is', null)
+      .gt('id', lastId)
+      .order('id', { ascending: true })
+      .limit(1000);
+    if (error || !data || data.length === 0) break;
     data.forEach(b => placeIdMap.set(b.place_id.toLowerCase(), b.id));
-    from += 1000;
-    if (data.length < 1000) break;
+    lastId = data[data.length - 1].id;
     process.stdout.write('\r  Loaded ' + placeIdMap.size.toLocaleString() + ' PlaceIDs...');
   }
   console.log('\r  ✓ ' + placeIdMap.size.toLocaleString() + ' businesses with PlaceID\n');
 
   // ── Step 2: Load existing fingerprints ───────────────────────────────────────
+  // Also use supabase-js range() for consistent pagination
   console.log('Loading existing review fingerprints...');
   const existingHashes = new Set();
-  let rFrom = 0;
+  let lastRevId = '00000000-0000-0000-0000-000000000000';
   while (true) {
-    const data = await fetchJSON(
-      `${SUPABASE_URL}/rest/v1/business_reviews?select=business_id,pain_category,review_text&limit=1000&offset=${rFrom}`,
-      { headers: { apikey: SERVICE_KEY, Authorization: 'Bearer ' + SERVICE_KEY } }
-    );
-    if (!Array.isArray(data) || data.length === 0) break;
+    const { data, error } = await supabase
+      .from('business_reviews')
+      .select('id,business_id,pain_category,review_text')
+      .gt('id', lastRevId)
+      .order('id', { ascending: true })
+      .limit(1000);
+    if (error || !data || data.length === 0) break;
     data.forEach(r => existingHashes.add(contentHash(r.business_id, r.review_text || '', r.pain_category)));
-    rFrom += 1000;
-    if (data.length < 1000) break;
+    lastRevId = data[data.length - 1].id;
     process.stdout.write('\r  ' + existingHashes.size.toLocaleString() + ' fingerprints...');
   }
   console.log('\r  ✓ ' + existingHashes.size.toLocaleString() + ' existing reviews fingerprinted\n');
@@ -369,9 +381,8 @@ async function main() {
   }
   console.log('  Total new this run: ' + grandInserted.toLocaleString());
 
-  // Final DB counts
-  const { createClient } = require('@supabase/supabase-js');
-  const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
+  // Final DB counts — reuse the supabase client already declared above
+
   const { count: totalBiz } = await supabase.from('businesses').select('*', { count: 'exact', head: true });
 
   const countRes = await fetch(SUPABASE_URL + '/rest/v1/business_reviews?select=id', {
