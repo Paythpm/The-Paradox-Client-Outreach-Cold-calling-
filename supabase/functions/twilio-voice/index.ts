@@ -4,17 +4,21 @@ const corsHeaders = {
 };
 
 function getCallerIdForNumber(toNumber: string): string {
-  if (toNumber.startsWith('+61')) return Deno.env.get('TWILIO_NUMBER_AU') || '';
-  if (toNumber.startsWith('+44')) return Deno.env.get('TWILIO_NUMBER_UK') || '';
+  // Get each country number — falls back to US number if not yet configured
+  const usNumber  = Deno.env.get('TWILIO_NUMBER_US') || '';
+  const auNumber  = Deno.env.get('TWILIO_NUMBER_AU') || usNumber;
+  const ukNumber  = Deno.env.get('TWILIO_NUMBER_UK') || usNumber; // fallback until UK bundle approved
+  const caNumber  = Deno.env.get('TWILIO_NUMBER_CA') || usNumber;
+
+  if (toNumber.startsWith('+61')) return auNumber;
+  if (toNumber.startsWith('+44')) return ukNumber;
   if (toNumber.startsWith('+1')) {
-    // +1 covers both US and CA — pick based on area code or fall back to US
-    // Canadian area codes: 204,226,236,249,250,289,306,343,365,403,416,418,431,437,438,450,506,514,519,548,579,581,587,604,613,639,647,672,705,709,742,778,780,782,807,819,825,867,873,902,905
     const area = toNumber.slice(2, 5);
     const caAreaCodes = new Set(['204','226','236','249','250','289','306','343','365','403','416','418','431','437','438','450','506','514','519','548','579','581','587','604','613','639','647','672','705','709','742','778','780','782','807','819','825','867','873','902','905']);
-    if (caAreaCodes.has(area)) return Deno.env.get('TWILIO_NUMBER_CA') || '';
-    return Deno.env.get('TWILIO_NUMBER_US') || '';
+    if (caAreaCodes.has(area)) return caNumber;
+    return usNumber;
   }
-  return Deno.env.get('TWILIO_NUMBER_AU') || '';
+  return auNumber;
 }
 
 Deno.serve(async (req) => {
