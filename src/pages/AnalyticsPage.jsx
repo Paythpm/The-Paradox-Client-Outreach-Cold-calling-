@@ -40,18 +40,24 @@ function StatCard({ label, value, sub, color }) {
 }
 
 export default function AnalyticsPage() {
-  const { user, caller } = useAuth();
+  const { user, caller, isLoading: authLoading } = useAuth();
   const [range, setRange] = useState('week');
   const [scriptPerf, setScriptPerf] = useState([]);
-  const [filterCaller, setFilterCaller] = useState(null); // admin-only: null = all team
+  const [filterCaller, setFilterCaller] = useState(null);
   const [allCallers, setAllCallers] = useState([]);
 
   // Determine role — admin sees everything, employees see only their own data
   const isAdmin = ADMIN_EMAILS.includes(user?.email);
 
-  // For employees: always filter to their own caller_id
-  // For admin: use filterCaller (null = all team)
-  const effectiveCallerId = isAdmin ? (filterCaller || undefined) : (caller?.id || undefined);
+  // FIX: Don't pass callerId until auth is fully settled (caller loaded).
+  // Passing undefined then a UUID causes the hook to fire twice and crash.
+  // We hold off until caller is resolved for non-admins.
+  const authReady = isAdmin ? !!user : !!caller;
+  const effectiveCallerId = !authReady
+    ? '__PENDING__'  // sentinel — hook skips fetch when this value is seen
+    : isAdmin
+      ? (filterCaller || undefined)
+      : caller.id;
 
   // Admin: load all callers for the filter dropdown
   React.useEffect(() => {
@@ -110,6 +116,13 @@ export default function AnalyticsPage() {
     a.click();
     URL.revokeObjectURL(url);
   };
+
+  if (authLoading || !authReady) return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
+      <div className="spinner" />
+      <style>{`.spinner{width:36px;height:36px;border:2px solid var(--border);border-top:2px solid var(--accent);border-radius:50%;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
 
   if (isLoading && !data) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>

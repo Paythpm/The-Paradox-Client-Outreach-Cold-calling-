@@ -7,6 +7,9 @@ export function useAnalytics({ startISO, endISO, countryCode, callerId } = {}) {
   const [error, setError] = useState(null);
 
   const fetch = useCallback(async () => {
+    // '__PENDING__' is a sentinel from AnalyticsPage — auth not ready yet, skip fetch
+    if (callerId === '__PENDING__') return;
+
     setIsLoading(true);
     setError(null);
     try {
