@@ -206,7 +206,7 @@ function PlatformApp() {
             </ProtectedRoute>
           } />
           <Route path="/migration" element={
-            <ProtectedRoute>
+            <ProtectedRoute adminOnly>
               <MigrationPanel />
             </ProtectedRoute>
           } />
@@ -224,6 +224,10 @@ function PlatformApp() {
 function PlatformDashboard({ user, caller, signOut }) {
   const [showCSV, setShowCSV] = useState(false);
   const [forcedCountry, setForcedCountry] = useState(null);
+
+  // Admin-only features: CSV mode and Import Data
+  // Only the account owner (admin) should access these — employees should not
+  const isAdmin = user?.email === 'ramakantsharma2103@gmail.com';
 
   if (showCSV) return <CSVApp />;
 
@@ -247,8 +251,14 @@ function PlatformDashboard({ user, caller, signOut }) {
         <WorldClockBar onCountryClick={cc => setForcedCountry(cc)} />
 
         <Link to="/analytics" style={{ fontSize: 13, color: 'var(--text3)', textDecoration: 'none', padding: '4px 8px', borderRadius: 6 }}>Analytics</Link>
-        <Link to="/migration" style={{ fontSize: 13, color: 'var(--text3)', textDecoration: 'none', padding: '4px 8px', borderRadius: 6 }}>Import Data</Link>
-        <button onClick={() => setShowCSV(true)} style={{ fontSize: 12, color: 'var(--text3)', background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}>CSV Mode</button>
+
+        {/* Admin-only controls — hidden from regular employees */}
+        {isAdmin && (
+          <>
+            <Link to="/migration" style={{ fontSize: 13, color: 'var(--text3)', textDecoration: 'none', padding: '4px 8px', borderRadius: 6 }}>Import Data</Link>
+            <button onClick={() => setShowCSV(true)} style={{ fontSize: 12, color: 'var(--text3)', background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}>CSV Mode</button>
+          </>
+        )}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 8 }}>
           <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: 'white' }}>
@@ -501,8 +511,7 @@ function SupabaseLeadView({ caller, forcedCountry, onCountryChange }) {
           {isLoading && <div style={{ padding: 24, color: 'var(--text3)', fontSize: 13, textAlign: 'center' }}>Loading...</div>}
           {!isLoading && businesses.length === 0 && (
             <div style={{ padding: 24, color: 'var(--text3)', fontSize: 13, textAlign: 'center' }}>
-              No businesses found.<br />
-              <Link to="/migration" style={{ color: 'var(--accent2)', fontSize: 12, marginTop: 8, display: 'block' }}>Import data →</Link>
+              No businesses found.
             </div>
           )}
           {!isLoading && businesses.length > 0 && (
