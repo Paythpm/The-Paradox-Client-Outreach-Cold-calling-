@@ -8,6 +8,7 @@ import Dashboard from './components/Dashboard';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { TwilioProvider } from './contexts/TwilioContext';
 import ProtectedRoute from './components/ProtectedRoute';
+import ErrorBoundary from './components/ErrorBoundary';
 import LoginPage from './pages/LoginPage';
 import MigrationPanel from './components/MigrationPanel';
 import WorldClockBar from './components/WorldClockBar';
@@ -200,9 +201,11 @@ function PlatformApp() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/analytics" element={
             <ProtectedRoute>
-              <Suspense fallback={<LoadingScreen fileName="Analytics" />}>
-                <AnalyticsPage />
-              </Suspense>
+              <ErrorBoundary>
+                <Suspense fallback={<LoadingScreen fileName="Analytics" />}>
+                  <AnalyticsPage />
+                </Suspense>
+              </ErrorBoundary>
             </ProtectedRoute>
           } />
           <Route path="/migration" element={

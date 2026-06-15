@@ -1,20 +1,11 @@
-import React, { useState, lazy, Suspense, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useAnalytics } from '../hooks/useAnalytics';
 import { useAuth } from '../contexts/AuthContext';
 import Papa from 'papaparse';
-
-const LineChart = lazy(() => import('recharts').then(m => ({ default: m.LineChart })));
-const Line = lazy(() => import('recharts').then(m => ({ default: m.Line })));
-const XAxis = lazy(() => import('recharts').then(m => ({ default: m.XAxis })));
-const YAxis = lazy(() => import('recharts').then(m => ({ default: m.YAxis })));
-const Tooltip = lazy(() => import('recharts').then(m => ({ default: m.Tooltip })));
-const Legend = lazy(() => import('recharts').then(m => ({ default: m.Legend })));
-const ResponsiveContainer = lazy(() => import('recharts').then(m => ({ default: m.ResponsiveContainer })));
-const PieChart = lazy(() => import('recharts').then(m => ({ default: m.PieChart })));
-const Pie = lazy(() => import('recharts').then(m => ({ default: m.Pie })));
-const Cell = lazy(() => import('recharts').then(m => ({ default: m.Cell })));
-const BarChart = lazy(() => import('recharts').then(m => ({ default: m.BarChart })));
-const Bar = lazy(() => import('recharts').then(m => ({ default: m.Bar })));
+import {
+  LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer,
+  PieChart, Pie, Cell, BarChart, Bar
+} from 'recharts';
 
 const ADMIN_EMAILS = ['ramakantsharma2103@gmail.com'];
 
@@ -226,35 +217,31 @@ export default function AnalyticsPage() {
       <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 20, marginBottom: 24 }}>
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '20px 22px' }}>
           <p style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Daily Activity</p>
-          <Suspense fallback={<div style={{ height: 200, background: 'var(--surface2)', borderRadius: 8 }} />}>
-            <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={dailyTrend || []}>
-                <XAxis dataKey="date" tick={{ fill: 'var(--text3)', fontSize: 11 }} />
-                <YAxis tick={{ fill: 'var(--text3)', fontSize: 11 }} />
-                <Tooltip contentStyle={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8 }} />
-                <Legend />
-                <Line type="monotone" dataKey="total_calls" stroke="#6c63ff" strokeWidth={2} dot={false} name="Calls" />
-                <Line type="monotone" dataKey="interested"  stroke="#2ecc7d" strokeWidth={2} dot={false} name="Interested" />
-                <Line type="monotone" dataKey="meetings"    stroke="#3b9eff" strokeWidth={2} dot={false} name="Meetings" />
-              </LineChart>
-            </ResponsiveContainer>
-          </Suspense>
+          <ResponsiveContainer width="100%" height={200}>
+            <LineChart data={dailyTrend || []}>
+              <XAxis dataKey="date" tick={{ fill: 'var(--text3)', fontSize: 11 }} />
+              <YAxis tick={{ fill: 'var(--text3)', fontSize: 11 }} />
+              <Tooltip contentStyle={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8 }} />
+              <Legend />
+              <Line type="monotone" dataKey="total_calls" stroke="#6c63ff" strokeWidth={2} dot={false} name="Calls" />
+              <Line type="monotone" dataKey="interested"  stroke="#2ecc7d" strokeWidth={2} dot={false} name="Interested" />
+              <Line type="monotone" dataKey="meetings"    stroke="#3b9eff" strokeWidth={2} dot={false} name="Meetings" />
+            </LineChart>
+          </ResponsiveContainer>
         </div>
 
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '20px 22px' }}>
           <p style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Outcome Breakdown</p>
-          <Suspense fallback={<div style={{ height: 200, background: 'var(--surface2)', borderRadius: 8 }} />}>
-            <ResponsiveContainer width="100%" height={200}>
-              <PieChart>
-                <Pie data={outcomeBreakdown || []} dataKey="count" nameKey="outcome" cx="50%" cy="50%" outerRadius={80} innerRadius={50}>
-                  {(outcomeBreakdown || []).map((entry, i) => (
-                    <Cell key={i} fill={OUTCOME_COLORS[entry.outcome] || '#6c63ff'} />
-                  ))}
-                </Pie>
-                <Tooltip contentStyle={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8 }} />
-              </PieChart>
-            </ResponsiveContainer>
-          </Suspense>
+          <ResponsiveContainer width="100%" height={200}>
+            <PieChart>
+              <Pie data={outcomeBreakdown || []} dataKey="count" nameKey="outcome" cx="50%" cy="50%" outerRadius={80} innerRadius={50}>
+                {(outcomeBreakdown || []).map((entry, i) => (
+                  <Cell key={i} fill={OUTCOME_COLORS[entry.outcome] || '#6c63ff'} />
+                ))}
+              </Pie>
+              <Tooltip contentStyle={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8 }} />
+            </PieChart>
+          </ResponsiveContainer>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
             {(outcomeBreakdown || []).slice(0, 6).map(o => (
               <span key={o.outcome} style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: (OUTCOME_COLORS[o.outcome] || '#6c63ff') + '22', color: OUTCOME_COLORS[o.outcome] || '#6c63ff' }}>
@@ -359,17 +346,15 @@ export default function AnalyticsPage() {
           <p style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
             {isAdmin ? 'Top Categories' : 'Your Top Categories'}
           </p>
-          <Suspense fallback={<div style={{ height: 200, background: 'var(--surface2)', borderRadius: 8 }} />}>
-            <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={(topCategories || []).slice(0, 8)} layout="vertical">
-                <XAxis type="number" tick={{ fill: 'var(--text3)', fontSize: 10 }} />
-                <YAxis type="category" dataKey="category" tick={{ fill: 'var(--text2)', fontSize: 11 }} width={120} />
-                <Tooltip contentStyle={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8 }} />
-                <Bar dataKey="calls" fill="var(--surface3)" name="Calls" radius={[0, 4, 4, 0]} />
-                <Bar dataKey="interested" fill="#2ecc7d" name="Interested" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </Suspense>
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={(topCategories || []).slice(0, 8)} layout="vertical">
+              <XAxis type="number" tick={{ fill: 'var(--text3)', fontSize: 10 }} />
+              <YAxis type="category" dataKey="category" tick={{ fill: 'var(--text2)', fontSize: 11 }} width={120} />
+              <Tooltip contentStyle={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8 }} />
+              <Bar dataKey="calls" fill="var(--surface3)" name="Calls" radius={[0, 4, 4, 0]} />
+              <Bar dataKey="interested" fill="#2ecc7d" name="Interested" radius={[0, 4, 4, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
         </div>
 
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '20px 22px' }}>
