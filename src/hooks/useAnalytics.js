@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import supabase from '../lib/supabase';
 
-export function useAnalytics({ start, end, countryCode, callerId } = {}) {
+export function useAnalytics({ startISO, endISO, countryCode, callerId } = {}) {
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -10,9 +10,10 @@ export function useAnalytics({ start, end, countryCode, callerId } = {}) {
     setIsLoading(true);
     setError(null);
     try {
-      const startISO = start ? start.toISOString() : new Date(Date.now() - 30 * 24 * 3600000).toISOString();
-      const endISO = end ? end.toISOString() : new Date().toISOString();
-      let logsQuery = supabase.from('call_logs').select('*, businesses(business_name, category, country_code, city), callers(full_name)').gte('started_at', startISO).lte('started_at', endISO);
+      // Accept pre-computed ISO strings to avoid Date object reference instability
+      const startStr = startISO || new Date(Date.now() - 30 * 24 * 3600000).toISOString();
+      const endStr = endISO || new Date().toISOString();
+      let logsQuery = supabase.from('call_logs').select('*, businesses(business_name, category, country_code, city), callers(full_name)').gte('started_at', startStr).lte('started_at', endStr);
       if (callerId) logsQuery = logsQuery.eq('caller_id', callerId);
 
       const { data: logs, error: logsErr } = await logsQuery;
@@ -22,7 +23,7 @@ export function useAnalytics({ start, end, countryCode, callerId } = {}) {
       const connected = allLogs.filter(l => l.outcome && l.outcome.startsWith('answered'));
       const interested = allLogs.filter(l => l.outcome === 'answered_interested');
 
-      let meetingsQuery = supabase.from('meetings').select('*').gte('created_at', startISO).lte('created_at', endISO);
+      let meetingsQuery = supabase.from('meetings').select('*').gte('created_at', startStr).lte('created_at', endStr);
       const { data: meetings } = await meetingsQuery;
       const allMeetings = meetings || [];
 
@@ -123,7 +124,7 @@ export function useAnalytics({ start, end, countryCode, callerId } = {}) {
     } finally {
       setIsLoading(false);
     }
-  }, [start, end, countryCode, callerId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [startISO, endISO, countryCode, callerId]); // stable strings — no infinite loop
 
   useEffect(() => { fetch(); }, [fetch]);
 
