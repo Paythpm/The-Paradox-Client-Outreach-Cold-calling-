@@ -17,7 +17,7 @@ import LiveClock from './components/LiveClock';
 import { useBusinessReviews } from './hooks/useBusinessReviews';
 import supabase from './lib/supabase';
 
-const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage'));
+import AnalyticsPage from './pages/AnalyticsPage';
 
 // ── Supabase is configured when env vars are present
 const SUPABASE_ENABLED = !!(
@@ -202,9 +202,7 @@ function PlatformApp() {
           <Route path="/analytics" element={
             <ProtectedRoute>
               <ErrorBoundary>
-                <Suspense fallback={<LoadingScreen fileName="Analytics" />}>
-                  <AnalyticsPage />
-                </Suspense>
+                <AnalyticsPage />
               </ErrorBoundary>
             </ProtectedRoute>
           } />
