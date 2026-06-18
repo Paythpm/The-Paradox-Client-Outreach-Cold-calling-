@@ -228,7 +228,7 @@ function PlatformDashboard({ user, caller, signOut }) {
 
   // Admin-only features: CSV mode and Import Data
   // Only the account owner (admin) should access these — employees should not
-  const isAdmin = user?.email === 'ramakantsharma2103@gmail.com';
+  const isAdmin = ['ramakantsharma2103@gmail.com', 'ramakantkaus@gmail.com'].includes(user?.email);
 
   if (showCSV) return <CSVApp />;
 

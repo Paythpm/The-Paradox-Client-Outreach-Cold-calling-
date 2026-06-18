@@ -7,7 +7,7 @@ import {
   PieChart, Pie, Cell, BarChart, Bar
 } from 'recharts';
 
-const ADMIN_EMAILS = ['ramakantsharma2103@gmail.com'];
+const ADMIN_EMAILS = ['ramakantsharma2103@gmail.com', 'ramakantkaus@gmail.com'];
 
 const OUTCOME_COLORS = {
   no_answer:               '#5a5a75',
@@ -172,11 +172,13 @@ export default function AnalyticsPage() {
             </button>
           ))}
 
-          {/* Export CSV — admin always, employee only for their own data */}
-          <button onClick={handleExportCSV} disabled={!data?.allLogs?.length}
-            style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text2)', cursor: 'pointer', fontSize: 13 }}>
-            ⬇ Export CSV
-          </button>
+          {/* Export CSV — admin only, employees cannot extract data */}
+          {isAdmin && (
+            <button onClick={handleExportCSV} disabled={!data?.allLogs?.length}
+              style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text2)', cursor: 'pointer', fontSize: 13 }}>
+              ⬇ Export CSV
+            </button>
+          )}
         </div>
       </div>
 

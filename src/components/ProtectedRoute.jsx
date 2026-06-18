@@ -2,7 +2,7 @@ import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
-const ADMIN_EMAILS = ['ramakantsharma2103@gmail.com'];
+const ADMIN_EMAILS = ['ramakantsharma2103@gmail.com', 'ramakantkaus@gmail.com'];
 
 export default function ProtectedRoute({ children, adminOnly = false }) {
   const { user, isLoading } = useAuth();
