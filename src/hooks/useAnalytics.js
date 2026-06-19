@@ -6,9 +6,13 @@ export function useAnalytics({ startISO, endISO, countryCode, callerId } = {}) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // Normalize callerId to a stable string — undefined and null are treated as 'ALL'
+  // This prevents useCallback from seeing new references on every render
+  const stableCallerId = callerId ?? 'ALL';
+
   const fetch = useCallback(async () => {
     // '__PENDING__' is a sentinel from AnalyticsPage — auth not ready yet, skip fetch
-    if (callerId === '__PENDING__') return;
+    if (stableCallerId === '__PENDING__') return;
 
     setIsLoading(true);
     setError(null);
@@ -17,7 +21,10 @@ export function useAnalytics({ startISO, endISO, countryCode, callerId } = {}) {
       const startStr = startISO || new Date(Date.now() - 30 * 24 * 3600000).toISOString();
       const endStr = endISO || new Date().toISOString();
       let logsQuery = supabase.from('call_logs').select('*, businesses(business_name, category, country_code, city), callers(full_name)').gte('started_at', startStr).lte('started_at', endStr);
-      if (callerId) logsQuery = logsQuery.eq('caller_id', callerId);
+      // Only filter by caller if a specific caller is selected (not 'ALL')
+      if (stableCallerId && stableCallerId !== 'ALL' && stableCallerId !== '__PENDING__') {
+        logsQuery = logsQuery.eq('caller_id', stableCallerId);
+      }
 
       const { data: logs, error: logsErr } = await logsQuery;
       if (logsErr) throw logsErr;
@@ -127,7 +134,7 @@ export function useAnalytics({ startISO, endISO, countryCode, callerId } = {}) {
     } finally {
       setIsLoading(false);
     }
-  }, [startISO, endISO, countryCode, callerId]); // stable strings — no infinite loop
+  }, [startISO, endISO, countryCode, stableCallerId]); // all stable primitives — no re-render loop
 
   useEffect(() => { fetch(); }, [fetch]);
 

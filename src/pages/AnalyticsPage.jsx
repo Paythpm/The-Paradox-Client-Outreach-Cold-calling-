@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useAnalytics } from '../hooks/useAnalytics';
 import { useAuth } from '../contexts/AuthContext';
 import Papa from 'papaparse';
@@ -38,17 +38,17 @@ export default function AnalyticsPage() {
   const [allCallers, setAllCallers] = useState([]);
 
   // Determine role — admin sees everything, employees see only their own data
-  const isAdmin = ADMIN_EMAILS.includes(user?.email);
+  // useMemo ensures isAdmin is stable and doesn't change on every render
+  const isAdmin = useMemo(() => ADMIN_EMAILS.includes(user?.email), [user?.email]);
 
-  // FIX: Don't pass callerId until auth is fully settled (caller loaded).
-  // Passing undefined then a UUID causes the hook to fire twice and crash.
-  // We hold off until caller is resolved for non-admins.
-  const authReady = isAdmin ? !!user : !!caller;
-  const effectiveCallerId = !authReady
-    ? '__PENDING__'  // sentinel — hook skips fetch when this value is seen
-    : isAdmin
-      ? (filterCaller || undefined)
-      : caller.id;
+  // Stable effectiveCallerId — only changes when filterCaller, isAdmin, or caller.id changes
+  // This prevents useAnalytics from re-firing when unrelated state (allCallers, scriptPerf) updates
+  const authReady = useMemo(() => isAdmin ? !!user : !!caller, [isAdmin, user, caller]);
+  const effectiveCallerId = useMemo(() => {
+    if (!authReady) return '__PENDING__';
+    if (isAdmin) return filterCaller || undefined;
+    return caller?.id;
+  }, [authReady, isAdmin, filterCaller, caller?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Admin: load all callers for the filter dropdown
   React.useEffect(() => {
