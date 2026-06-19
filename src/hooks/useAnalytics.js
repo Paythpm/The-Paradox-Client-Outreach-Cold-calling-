@@ -6,9 +6,8 @@ export function useAnalytics({ startISO, endISO, countryCode, callerId } = {}) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Normalize callerId to a stable string — undefined and null are treated as 'ALL'
-  // This prevents useCallback from seeing new references on every render
-  const stableCallerId = callerId ?? 'ALL';
+  // Normalize callerId to a stable string — undefined and null treated as 'ALL'
+  const stableCallerId = (callerId === undefined || callerId === null) ? 'ALL' : callerId;
 
   const fetch = useCallback(async () => {
     // '__PENDING__' is a sentinel from AnalyticsPage — auth not ready yet, skip fetch

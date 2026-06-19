@@ -41,13 +41,18 @@ export default function AnalyticsPage() {
   // useMemo ensures isAdmin is stable and doesn't change on every render
   const isAdmin = useMemo(() => ADMIN_EMAILS.includes(user?.email), [user?.email]);
 
-  // Stable effectiveCallerId — only changes when filterCaller, isAdmin, or caller.id changes
-  // This prevents useAnalytics from re-firing when unrelated state (allCallers, scriptPerf) updates
-  const authReady = useMemo(() => isAdmin ? !!user : !!caller, [isAdmin, user, caller]);
+  // Stable effectiveCallerId — only changes when filterCaller changes for admin
+  // For admin: caller.id is NOT needed — admin uses filterCaller, not their own ID
+  // For employee: only changes when their caller.id loads (once, on mount)
+  const authReady = useMemo(
+    () => isAdmin ? !!user : !!caller?.id,
+    [isAdmin, !!user, caller?.id] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  
   const effectiveCallerId = useMemo(() => {
     if (!authReady) return '__PENDING__';
-    if (isAdmin) return filterCaller || undefined;
-    return caller?.id;
+    if (isAdmin) return filterCaller || 'ALL'; // stable string, not undefined
+    return caller?.id || '__PENDING__';
   }, [authReady, isAdmin, filterCaller, caller?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Admin: load all callers for the filter dropdown

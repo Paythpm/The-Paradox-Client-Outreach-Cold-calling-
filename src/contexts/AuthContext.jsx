@@ -16,7 +16,14 @@ export function AuthProvider({ children }) {
       .select('*')
       .eq('id', userId)
       .single();
-    if (!error && data) setCaller(data);
+    if (!error && data) {
+      // Only update caller if the ID actually changed — prevents re-renders from
+      // token refreshes that return a new object with identical data
+      setCaller(prev => {
+        if (prev?.id === data.id && prev?.updated_at === data.updated_at) return prev;
+        return data;
+      });
+    }
   }
 
   useEffect(() => {
