@@ -616,6 +616,63 @@ function SupabaseLeadView({ caller, forcedCountry, onCountryChange }) {
 }
 
 // ── SelectedBizDetail — uses real reviews hook ────────────────────────────────
+// ── Manual status override — lets a caller set a lead's status without a live call.
+// Fixes the gap where the ONLY way to change status was completing a call (e.g.
+// correcting a misclick, logging an outcome from an email/other channel, or
+// resetting a lead back to the queue).
+const MANUAL_STATUS_OPTIONS = [
+  { key: 'not_called',         label: 'Not called',   color: 'var(--text3)' },
+  { key: 'interested',         label: 'Interested',   color: 'var(--green)' },
+  { key: 'callback_requested', label: 'Callback',     color: 'var(--amber)' },
+  { key: 'meeting_booked',     label: 'Meeting set',  color: 'var(--blue)' },
+  { key: 'not_interested',     label: 'Not interested', color: 'var(--red)' },
+  { key: 'no_answer',          label: 'No answer',    color: 'var(--text3)' },
+  { key: 'wrong_number',       label: 'Wrong #',      color: 'var(--text3)' },
+];
+
+function ManualStatusBar({ business }) {
+  const [status, setStatus] = React.useState(business?.call_status || 'not_called');
+  const [saving, setSaving] = React.useState(false);
+  const [savedFlash, setSavedFlash] = React.useState(false);
+
+  // Keep in sync when a different business is selected
+  React.useEffect(() => { setStatus(business?.call_status || 'not_called'); }, [business?.id, business?.call_status]);
+
+  const change = async (newStatus) => {
+    if (newStatus === status || saving) return;
+    const prev = status;
+    setStatus(newStatus);          // optimistic
+    setSaving(true);
+    const { error } = await supabase
+      .from('businesses')
+      .update({ call_status: newStatus, last_called_at: new Date().toISOString() })
+      .eq('id', business.id);
+    setSaving(false);
+    if (error) { setStatus(prev); return; }  // revert on failure
+    setSavedFlash(true);
+    setTimeout(() => setSavedFlash(false), 1500);
+  };
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', padding: '10px 16px', borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
+      <span style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginRight: 4 }}>Set status:</span>
+      {MANUAL_STATUS_OPTIONS.map(o => (
+        <button key={o.key} onClick={() => change(o.key)} disabled={saving}
+          style={{
+            padding: '4px 10px', borderRadius: 6, fontSize: 12, cursor: saving ? 'wait' : 'pointer',
+            border: `1px solid ${status === o.key ? o.color : 'var(--border)'}`,
+            background: status === o.key ? o.color : 'transparent',
+            color: status === o.key ? '#fff' : 'var(--text3)',
+            fontWeight: status === o.key ? 600 : 400,
+          }}>
+          {o.label}
+        </button>
+      ))}
+      {savedFlash && <span style={{ fontSize: 11, color: 'var(--green)', marginLeft: 4 }}>✓ Saved</span>}
+    </div>
+  );
+}
+
 function SelectedBizDetail({
   selectedBiz, businesses, ClinicDetail, ScriptPanel, CallPanel, MeetingScheduler, CallingHoursPanel,
   onCallPanelOpen, showCallPanel, showScheduler, callLogId,
@@ -631,6 +688,7 @@ function SelectedBizDetail({
 
   return (
     <div>
+      <ManualStatusBar business={selectedBiz} />
       {ClinicDetail && (
         <ClinicDetail
           biz={bizForDetail}

@@ -163,6 +163,7 @@ export async function saveCallOutcome(callLogId, outcome, notes, callerId) {
     'answered_interested': 'interested',
     'answered_not_interested': 'not_interested',
     'answered_callback': 'callback_requested',
+    'meeting_booked': 'meeting_booked',
     'no_answer': 'no_answer',
     'voicemail_left': 'no_answer',
     'wrong_number': 'wrong_number',

@@ -19,6 +19,16 @@ export async function scheduleMeeting({ businessId, callLogId, bookedBy, schedul
     .single();
 
   if (error) throw new Error(error.message);
+
+  // Mark the business as meeting_booked — a booked meeting is the highest-value
+  // outcome and must be reflected on the lead so it leaves the calling queue.
+  if (businessId) {
+    await supabase
+      .from('businesses')
+      .update({ call_status: 'meeting_booked', last_called_at: new Date().toISOString() })
+      .eq('id', businessId);
+  }
+
   return data;
 }
 
