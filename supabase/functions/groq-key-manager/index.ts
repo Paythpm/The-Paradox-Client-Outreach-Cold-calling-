@@ -11,9 +11,23 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+    // SECURITY: this function returns raw Groq API keys (get_active_key) and mutates
+    // the key pool. It must ONLY be callable server-to-server (by the generate-script
+    // function, which sends the service role key as its bearer). A browser call carries
+    // the user's JWT — not the service role key — so it is rejected here. This prevents
+    // any authenticated employee from extracting plaintext API keys via the endpoint.
+    const authHeader = req.headers.get('Authorization') || '';
+    if (authHeader !== `Bearer ${serviceKey}`) {
+      return new Response(JSON.stringify({ error: 'forbidden' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+      serviceKey
     );
 
     const { action, key_id, tokens_used, error_message } = await req.json();

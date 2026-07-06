@@ -29,8 +29,17 @@ Deno.serve(async (req) => {
   try {
     const body = await req.text();
     const params = new URLSearchParams(body);
-    const to = params.get('To') || '';
+    const rawTo = params.get('To') || '';
     const callSid = params.get('CallSid') || '';
+
+    // SECURITY: the To value is interpolated into TwiML XML below. Strip everything
+    // that isn't a valid E.164 phone character so a crafted value can't inject or
+    // restructure the <Dial>/<Number> markup (e.g. dialing premium-rate numbers).
+    const to = rawTo.replace(/[^0-9+]/g, '');
+    if (!/^\+?[1-9]\d{6,15}$/.test(to)) {
+      const badTwiml = `<?xml version="1.0" encoding="UTF-8"?><Response><Say>Invalid destination number.</Say></Response>`;
+      return new Response(badTwiml, { headers: { 'Content-Type': 'text/xml', ...corsHeaders } });
+    }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const callerId = getCallerIdForNumber(to);
