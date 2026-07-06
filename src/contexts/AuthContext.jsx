@@ -68,8 +68,12 @@ export function AuthProvider({ children }) {
     return { error };
   }
 
+  // Admin is now driven by the server-side role on the caller record
+  // (callers.role = 'admin'), not a hardcoded email list.
+  const isAdmin = caller?.role === 'admin';
+
   return (
-    <AuthContext.Provider value={{ user, caller, isLoading, signIn, signOut, updateCaller }}>
+    <AuthContext.Provider value={{ user, caller, isAdmin, isLoading, signIn, signOut, updateCaller }}>
       {children}
     </AuthContext.Provider>
   );

@@ -2,10 +2,8 @@ import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
-const ADMIN_EMAILS = ['ramakantsharma2103@gmail.com', 'ramakantkaus@gmail.com'];
-
 export default function ProtectedRoute({ children, adminOnly = false }) {
-  const { user, isLoading } = useAuth();
+  const { user, isAdmin, isLoading } = useAuth();
 
   if (isLoading) {
     return (
@@ -22,7 +20,7 @@ export default function ProtectedRoute({ children, adminOnly = false }) {
   }
 
   // Admin-only routes — redirect non-admins to home
-  if (adminOnly && !ADMIN_EMAILS.includes(user.email)) {
+  if (adminOnly && !isAdmin) {
     return <Navigate to="/" replace />;
   }
 

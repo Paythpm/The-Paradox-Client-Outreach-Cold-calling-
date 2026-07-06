@@ -7,8 +7,6 @@ import {
   PieChart, Pie, Cell, BarChart, Bar
 } from 'recharts';
 
-const ADMIN_EMAILS = ['ramakantsharma2103@gmail.com', 'ramakantkaus@gmail.com'];
-
 const OUTCOME_COLORS = {
   no_answer: '#5a5a75', answered_not_interested: '#ff5c6c',
   answered_callback: '#f59e0b', answered_interested: '#2ecc7d',
@@ -27,14 +25,11 @@ function StatCard({ label, value, sub, color }) {
 }
 
 export default function AnalyticsPage() {
-  const { user, caller, isLoading: authLoading } = useAuth();
+  const { user, caller, isAdmin, isLoading: authLoading } = useAuth();
   const [range, setRange] = useState('week');
   const [filterCaller, setFilterCaller] = useState(null);
   const [allCallers, setAllCallers] = useState([]);
   const [scriptPerf, setScriptPerf] = useState([]);
-
-  // Simple boolean — no useMemo, just a plain calculation
-  const isAdmin = ADMIN_EMAILS.includes(user?.email || '');
 
   // Compute ISO dates — MUST be stable across renders, otherwise the millisecond
   // component of `new Date()` changes every render and defeats the fetchKey guard
