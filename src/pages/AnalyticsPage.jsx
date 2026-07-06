@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAnalytics } from '../hooks/useAnalytics';
 import { useAuth } from '../contexts/AuthContext';
 import Papa from 'papaparse';
@@ -36,14 +36,18 @@ export default function AnalyticsPage() {
   // Simple boolean — no useMemo, just a plain calculation
   const isAdmin = ADMIN_EMAILS.includes(user?.email || '');
 
-  // Compute ISO dates — plain strings, recomputed only when range changes
-  const now = new Date();
-  const startDate = new Date(now);
-  if (range === 'today') startDate.setHours(0, 0, 0, 0);
-  else if (range === 'week') startDate.setDate(startDate.getDate() - 7);
-  else if (range === 'month') startDate.setDate(startDate.getDate() - 30);
-  const startISO = startDate.toISOString();
-  const endISO = now.toISOString();
+  // Compute ISO dates — MUST be stable across renders, otherwise the millisecond
+  // component of `new Date()` changes every render and defeats the fetchKey guard
+  // in useAnalytics, causing an infinite fetch/re-render loop (this was the crash).
+  // Memoized on `range` so the strings only change when the user switches range.
+  const { startISO, endISO } = useMemo(() => {
+    const now = new Date();
+    const startDate = new Date(now);
+    if (range === 'today') startDate.setHours(0, 0, 0, 0);
+    else if (range === 'week') startDate.setDate(startDate.getDate() - 7);
+    else if (range === 'month') startDate.setDate(startDate.getDate() - 30);
+    return { startISO: startDate.toISOString(), endISO: now.toISOString() };
+  }, [range]);
 
   // Determine what callerId to pass to the hook
   // Admin with no filter: 'ALL' (show everyone)
