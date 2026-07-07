@@ -365,13 +365,12 @@ export function getBusinessTimezone(city, countryCode) {
 /**
  * Get rich current time info for a given IANA timezone.
  */
-export function getCurrentTimeInTimezone(timezone) {
-  const now = new Date();
+export function getCurrentTimeInTimezone(timezone, atTime = new Date()) {
   let zoned;
   try {
-    zoned = toZonedTime(now, timezone);
+    zoned = toZonedTime(atTime, timezone);
   } catch {
-    zoned = now;
+    zoned = atTime;
   }
 
   const hour = zoned.getHours();
@@ -423,7 +422,9 @@ export function isLegalToCall(city, countryCode, atTime = new Date()) {
   } catch {
     zoned = atTime;
   }
-  const timeInfo = getCurrentTimeInTimezone(timezone);
+  // Pass atTime through so forward-looking checks (getNextPrimeWindow,
+  // getWeekForecast) evaluate the candidate time, not the present moment.
+  const timeInfo = getCurrentTimeInTimezone(timezone, atTime);
 
   const hours = LEGAL_CALLING_HOURS[countryCode];
   if (!hours) {
