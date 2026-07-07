@@ -15,6 +15,7 @@ import WorldClockBar from './components/WorldClockBar';
 import CallingStatusBadge from './components/CallingStatusBadge';
 import LiveClock from './components/LiveClock';
 import { useBusinessReviews } from './hooks/useBusinessReviews';
+import { useBusinessLock } from './hooks/useBusinessLock';
 import supabase from './lib/supabase';
 
 import AnalyticsPage from './pages/AnalyticsPage';
@@ -292,6 +293,10 @@ function SupabaseLeadView({ caller, forcedCountry, onCountryChange }) {
   const [showCallPanel, setShowCallPanel] = useState(false);
   const [showScheduler, setShowScheduler] = useState(false);
   const [callLogId, setCallLogId] = useState(null);
+
+  // Atomic lead lock — prevents two agents from calling the same business at once.
+  // Acquired when a lead is selected, released on change/unmount (see useBusinessLock).
+  const { isLockedByOther, lockedByName } = useBusinessLock(selectedBiz?.id, caller?.id);
 
   const PAGE_SIZE = 200; // load 200 at a time — virtualization handles rendering
 
@@ -579,7 +584,9 @@ function SupabaseLeadView({ caller, forcedCountry, onCountryChange }) {
             CallPanel={CallPanel}
             MeetingScheduler={MeetingScheduler}
             CallingHoursPanel={CallingHoursPanel}
-            onCallPanelOpen={() => setShowCallPanel(true)}
+            isLockedByOther={isLockedByOther}
+            lockedByName={lockedByName}
+            onCallPanelOpen={() => { if (!isLockedByOther) setShowCallPanel(true); }}
             showCallPanel={showCallPanel}
             showScheduler={showScheduler}
             callLogId={callLogId}
@@ -675,6 +682,7 @@ function ManualStatusBar({ business }) {
 
 function SelectedBizDetail({
   selectedBiz, businesses, ClinicDetail, ScriptPanel, CallPanel, MeetingScheduler, CallingHoursPanel,
+  isLockedByOther, lockedByName,
   onCallPanelOpen, showCallPanel, showScheduler, callLogId,
   onCallPanelClose, onCallEnded, onScheduleMeeting, onMeetingScheduled, onSchedulerClose,
 }) {
@@ -689,6 +697,12 @@ function SelectedBizDetail({
   return (
     <div>
       <ManualStatusBar business={selectedBiz} />
+      {isLockedByOther && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', background: 'var(--amber-bg)', borderBottom: '1px solid var(--border)', color: 'var(--amber)', fontSize: 13 }}>
+          <span>🔒</span>
+          <span><strong>{lockedByName}</strong> is currently working this lead. Calling is disabled to avoid double-dialing.</span>
+        </div>
+      )}
       {ClinicDetail && (
         <ClinicDetail
           biz={bizForDetail}
@@ -700,7 +714,7 @@ function SelectedBizDetail({
           ].filter(Boolean)}
         />
       )}
-      {showCallPanel && CallPanel && (
+      {showCallPanel && CallPanel && !isLockedByOther && (
         <CallPanel business={selectedBiz} onClose={onCallPanelClose} onCallEnded={onCallEnded} onScheduleMeeting={onScheduleMeeting} />
       )}
       {showScheduler && MeetingScheduler && (
