@@ -252,32 +252,8 @@ export function getBusinessTimezone(city, countryCode) {
   if (!city) return COUNTRY_DEFAULT_TIMEZONE[countryCode] || 'UTC';
   const cityLower = city.toLowerCase().trim();
 
-  // Build country-scoped lookup to avoid cross-country false matches
-  // e.g. "birmingham" in UK map must not match "Birmingham, AL" (US)
-  const COUNTRY_KEY_PREFIXES = {
-    AU: ['australia/', 'hobart', 'darwin', 'sydney', 'melbourne', 'brisbane', 'perth', 'adelaide',
-         'gold coast', 'sunshine coast', 'cairns', 'townsville', 'toowoomba', 'canberra', 'newcastle nsw',
-         'wollongong', 'launceston', 'port augusta', 'fremantle', 'bunbury', 'alice springs'],
-    CA: ['america/toronto', 'america/vancouver', 'america/edmonton', 'america/winnipeg',
-         'america/regina', 'america/halifax', 'america/st_johns', 'america/montreal', 'america/whitehorse',
-         'toronto', 'vancouver', 'calgary', 'edmonton', 'montreal', 'ottawa', 'winnipeg', 'halifax',
-         "st. john's", 'victoria bc', 'kelowna', 'burnaby', 'surrey', 'richmond bc', 'red deer',
-         'lethbridge', 'saskatoon', 'regina', 'fredericton', 'moncton', 'saint john nb',
-         'gatineau', 'laval', 'sherbrooke', 'london ontario', 'hamilton ontario', 'kingston ontario'],
-    UK: ['europe/london', 'london', 'manchester', 'birmingham', 'leeds', 'sheffield',
-         'liverpool', 'bristol', 'edinburgh', 'glasgow', 'cardiff', 'belfast',
-         'newcastle upon tyne', 'nottingham', 'leicester', 'coventry', 'brighton', 'plymouth',
-         'derby', 'wolverhampton', 'southampton', 'portsmouth', 'oxford', 'cambridge',
-         'stoke', 'sunderland', 'reading', 'scotland', 'england', 'wales', 'northern ireland'],
-    US: ['america/new_york', 'america/chicago', 'america/denver', 'america/los_angeles',
-         'america/phoenix', 'america/anchorage', 'pacific/honolulu', 'america/detroit',
-         'america/indiana', 'america/boise',
-         // US city names that could collide with other countries
-         'birmingham, al', 'newcastle', 'richmond, va', 'portland', 'cambridge, ma',
-         'victoria, tx', 'london, on', 'hamilton, oh'],
-  };
-
-  // For known-ambiguous cities, use country-scoped exact/prefix matching first
+  // For known-ambiguous cities (same name across countries), resolve via the
+  // country code + state/province suffix rather than a naive substring match.
   const ambiguous = ['birmingham', 'newcastle', 'richmond', 'victoria', 'london', 'cambridge',
                      'hamilton', 'portland', 'stirling', 'perth', 'reading', 'derby'];
   const isAmbiguous = ambiguous.some(a => cityLower.includes(a));

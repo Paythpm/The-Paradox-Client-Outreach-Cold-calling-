@@ -8,13 +8,20 @@ function formatTime(iso: string, tz: string): string {
   } catch { return iso; }
 }
 
-async function sendSMS(to: string, body: string, fromNumber: string, accountSid: string, authToken: string, supabaseUrl: string) {
+async function sendSMS(to: string, body: string, fromNumber: string, accountSid: string, authToken: string, supabaseUrl: string): Promise<{ ok: boolean; error?: string }> {
+  // No configured sender for this country → don't silently drop it.
+  if (!fromNumber) return { ok: false, error: 'no From number configured for this country' };
   const credentials = btoa(`${accountSid}:${authToken}`);
-  await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
+  const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
     method: 'POST',
     headers: { 'Authorization': `Basic ${credentials}`, 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ Body: body, To: to, From: fromNumber, StatusCallback: `${supabaseUrl}/functions/v1/twilio-message-webhook` }).toString(),
   });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => res.statusText);
+    return { ok: false, error: `Twilio ${res.status}: ${txt.slice(0, 120)}` };
+  }
+  return { ok: true };
 }
 
 function getFromNumber(countryCode: string): string {
@@ -34,6 +41,7 @@ Deno.serve(async (req) => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 
   let sent24h = 0, sent1h = 0, noshows = 0;
+  const skipped: string[] = [];
 
   try {
     const now = new Date();
@@ -49,7 +57,8 @@ Deno.serve(async (req) => {
       const isDNC = await checkDNC(supabase, phone);
       if (isDNC) continue;
       const msg = `Hi ${m.businesses.business_name}! Just a reminder — your call with us is tomorrow, ${formatTime(m.scheduled_at, m.timezone)}.${m.meeting_link ? ' Join here: ' + m.meeting_link : ''} Looking forward to it! Reply CANCEL if you need to reschedule.`;
-      await sendSMS(phone, msg, getFromNumber(m.businesses.country_code), accountSid, authToken, supabaseUrl);
+      const r = await sendSMS(phone, msg, getFromNumber(m.businesses.country_code), accountSid, authToken, supabaseUrl);
+      if (!r.ok) { skipped.push(`24h ${m.businesses.country_code}: ${r.error}`); continue; } // don't mark sent → retries later
       await supabase.from('meetings').update({ reminder_24h_sent_at: new Date().toISOString() }).eq('id', m.id);
       sent24h++;
     }
@@ -65,7 +74,8 @@ Deno.serve(async (req) => {
       const isDNC = await checkDNC(supabase, phone);
       if (isDNC) continue;
       const msg = `Hi ${m.businesses.business_name}! Your call is in about 1 hour — ${formatTime(m.scheduled_at, m.timezone)}.${m.meeting_link ? ' Link: ' + m.meeting_link : ''} See you soon! 🙌`;
-      await sendSMS(phone, msg, getFromNumber(m.businesses.country_code), accountSid, authToken, supabaseUrl);
+      const r = await sendSMS(phone, msg, getFromNumber(m.businesses.country_code), accountSid, authToken, supabaseUrl);
+      if (!r.ok) { skipped.push(`1h ${m.businesses.country_code}: ${r.error}`); continue; }
       await supabase.from('meetings').update({ reminder_1h_sent_at: new Date().toISOString() }).eq('id', m.id);
       sent1h++;
     }
@@ -80,13 +90,14 @@ Deno.serve(async (req) => {
       const isDNC = await checkDNC(supabase, phone);
       if (isDNC) continue;
       const msg = `Hi ${m.businesses.business_name}! Looks like we missed each other earlier. No worries — would you like to reschedule? Just reply RESCHEDULE and I'll find a new time that works for you.`;
-      await sendSMS(phone, msg, getFromNumber(m.businesses.country_code), accountSid, authToken, supabaseUrl);
+      const r = await sendSMS(phone, msg, getFromNumber(m.businesses.country_code), accountSid, authToken, supabaseUrl);
+      if (!r.ok) { skipped.push(`noshow ${m.businesses.country_code}: ${r.error}`); continue; }
       await supabase.from('meetings').update({ status: 'no_show', reschedule_offer_sent_at: new Date().toISOString() }).eq('id', m.id);
       if (m.businesses?.id) await supabase.from('businesses').update({ call_status: 'callback_requested' }).eq('id', m.businesses.id);
       noshows++;
     }
 
-    return new Response(JSON.stringify({ success: true, sent_24h: sent24h, sent_1h: sent1h, noshows_handled: noshows }), {
+    return new Response(JSON.stringify({ success: true, sent_24h: sent24h, sent_1h: sent1h, noshows_handled: noshows, skipped }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
 

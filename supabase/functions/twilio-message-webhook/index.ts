@@ -6,6 +6,24 @@ function normalizeReply(text: string): string {
   return (text || '').toLowerCase().trim().replace(/[^a-z0-9\s]/g, '');
 }
 
+// Validate Twilio's X-Twilio-Signature: base64(HMAC-SHA1(authToken, url + sorted(key+value))).
+async function isValidTwilioSignature(
+  authToken: string, signature: string, urls: string[], params: Record<string, string>,
+): Promise<boolean> {
+  if (!signature) return false;
+  const sortedKeys = Object.keys(params).sort();
+  const key = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(authToken), { name: 'HMAC', hash: 'SHA-1' }, false, ['sign'],
+  );
+  for (const url of urls) {
+    let data = url;
+    for (const k of sortedKeys) data += k + params[k];
+    const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(data));
+    if (btoa(String.fromCharCode(...new Uint8Array(sig))) === signature) return true;
+  }
+  return false;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
@@ -13,6 +31,20 @@ Deno.serve(async (req) => {
     const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
     const body = await req.text();
     const params = new URLSearchParams(body);
+
+    // ── Verify the request genuinely came from Twilio ──────────────────────
+    const authToken = Deno.env.get('TWILIO_AUTH_TOKEN') || '';
+    if (authToken && Deno.env.get('TWILIO_SKIP_VALIDATION') !== 'true') {
+      const signature = req.headers.get('X-Twilio-Signature') || '';
+      const paramObj: Record<string, string> = {};
+      for (const [k, v] of params.entries()) paramObj[k] = v;
+      const candidateUrls = [req.url, `${Deno.env.get('SUPABASE_URL')}/functions/v1/twilio-message-webhook`];
+      if (!(await isValidTwilioSignature(authToken, signature, candidateUrls, paramObj))) {
+        return new Response('<?xml version="1.0" encoding="UTF-8"?><Response></Response>', {
+          status: 403, headers: { 'Content-Type': 'text/xml', ...corsHeaders },
+        });
+      }
+    }
 
     const messageSid = params.get('MessageSid') || '';
     const messageStatus = params.get('MessageStatus') || '';
@@ -29,7 +61,8 @@ Deno.serve(async (req) => {
     // Handle inbound reply (Body present, no MessageStatus for inbound)
     if (replyBody && !messageStatus) {
       const normalized = normalizeReply(replyBody);
-      const fromClean = from.replace('whatsapp:', '');
+      // Strip to E.164 phone chars before using in a PostgREST filter (injection-safe).
+      const fromClean = from.replace('whatsapp:', '').replace(/[^0-9+]/g, '');
 
       // Find the meeting by matching phone number
       const { data: biz } = await supabase

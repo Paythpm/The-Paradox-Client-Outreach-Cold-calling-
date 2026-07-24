@@ -3,6 +3,35 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+/**
+ * Validate Twilio's X-Twilio-Signature so only genuine Twilio requests are
+ * accepted. Algorithm: base64( HMAC-SHA1( authToken, url + sorted(key+value) ) ).
+ * Tries both the raw request URL and the canonical SUPABASE_URL path to survive
+ * any proxy host rewriting. Set TWILIO_SKIP_VALIDATION=true to disable in an
+ * emergency without a redeploy.
+ */
+async function isValidTwilioSignature(
+  authToken: string,
+  signature: string,
+  urls: string[],
+  params: Record<string, string>,
+): Promise<boolean> {
+  if (!signature) return false;
+  const sortedKeys = Object.keys(params).sort();
+  const key = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(authToken),
+    { name: 'HMAC', hash: 'SHA-1' }, false, ['sign'],
+  );
+  for (const url of urls) {
+    let data = url;
+    for (const k of sortedKeys) data += k + params[k];
+    const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(data));
+    const b64 = btoa(String.fromCharCode(...new Uint8Array(sig)));
+    if (b64 === signature) return true;
+  }
+  return false;
+}
+
 function getCallerIdForNumber(toNumber: string): string {
   // Get each country number — falls back to US number if not yet configured
   const usNumber  = Deno.env.get('TWILIO_NUMBER_US') || '';
@@ -29,6 +58,22 @@ Deno.serve(async (req) => {
   try {
     const body = await req.text();
     const params = new URLSearchParams(body);
+
+    // ── Verify the request genuinely came from Twilio ──────────────────────
+    const authToken = Deno.env.get('TWILIO_AUTH_TOKEN') || '';
+    const skipValidation = Deno.env.get('TWILIO_SKIP_VALIDATION') === 'true';
+    if (authToken && !skipValidation) {
+      const signature = req.headers.get('X-Twilio-Signature') || '';
+      const paramObj: Record<string, string> = {};
+      for (const [k, v] of params.entries()) paramObj[k] = v;
+      const candidateUrls = [req.url, `${Deno.env.get('SUPABASE_URL')}/functions/v1/twilio-voice`];
+      const valid = await isValidTwilioSignature(authToken, signature, candidateUrls, paramObj);
+      if (!valid) {
+        const rejectTwiml = `<?xml version="1.0" encoding="UTF-8"?><Response><Reject/></Response>`;
+        return new Response(rejectTwiml, { status: 403, headers: { 'Content-Type': 'text/xml', ...corsHeaders } });
+      }
+    }
+
     const rawTo = params.get('To') || '';
     const callSid = params.get('CallSid') || '';
 

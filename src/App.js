@@ -1,4 +1,4 @@
-﻿import React, { useState, useCallback, lazy, Suspense } from 'react';
+﻿import React, { useState, useCallback } from 'react';
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import Papa from 'papaparse';
